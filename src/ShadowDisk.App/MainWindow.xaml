@@ -335,7 +335,7 @@
                       <StackPanel Visibility="{Binding CanApply, Converter={StaticResource BoolToVis}}">
                         <TextBlock TextWrapping="Wrap"
                                    Text="This is a ShadowDisk practice disk, so this plan can be applied for real. You will see a final confirmation screen first." />
-                        <Button Content="Create this volume for real…" Command="{Binding ApplyCommand}" HorizontalAlignment="Left"
+                        <Button Content="{Binding ApplyButtonText}" Command="{Binding ApplyCommand}" HorizontalAlignment="Left"
                                 Background="#B91C1C" Foreground="White" Margin="0,8,0,0" />
                       </StackPanel>
                     </StackPanel>

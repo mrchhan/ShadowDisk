@@ -18,6 +18,19 @@ public sealed record CreateVolumeOrder(
     long SizeBytes,
     string VolumeLabel);
 
+/// <summary>An instruction to shrink or extend one partition (and its volume) to an exact size.</summary>
+public sealed record ResizeOrder(
+    int DiskNumber,
+    string? DiskUniqueId,
+    string LayoutFingerprint,
+    int PartitionNumber,
+    long OffsetBytes,
+    long CurrentSizeBytes,
+    long TargetSizeBytes)
+{
+    public bool IsShrink => TargetSizeBytes < CurrentSizeBytes;
+}
+
 public enum OperationStatus
 {
     Succeeded,          // Every step finished and the read-back matches
@@ -47,6 +60,9 @@ public sealed record CreateVolumeBackendResult(
     public bool Completed => PartitionCreated && Formatted && Error is null;
 }
 
+/// <summary>What the backend reported for a resize. One call; nothing is retried.</summary>
+public sealed record ResizeBackendResult(bool Resized, string? Error);
+
 /// <summary>
 /// The narrow interface to code that writes to disks. Implementations must do exactly what is
 /// asked — one attempt, no retries, no extra steps — and must refuse any disk that is not a
@@ -55,4 +71,7 @@ public sealed record CreateVolumeBackendResult(
 public interface IDiskOperations
 {
     Task<CreateVolumeBackendResult> CreateVolumeAsync(PhysicalDisk disk, long offsetBytes, long sizeBytes, string volumeLabel);
+
+    /// <summary>Resizes one partition and its file system (shrink or extend) to exactly <paramref name="targetSizeBytes"/>.</summary>
+    Task<ResizeBackendResult> ResizePartitionAsync(PhysicalDisk disk, int partitionNumber, long offsetBytes, long targetSizeBytes);
 }

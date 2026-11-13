@@ -59,6 +59,40 @@ a partial result (partition created, format failed).
 5. Try the same on a physical disk: the Apply button must not appear (only an explanation).
 6. Click **Remove practice disks**; the disk disappears and its file is deleted.
 
+## Shrink and extend a volume (enabled on practice disks, v0.3 preview)
+
+**What it does:** one call to `MSFT_Partition.Resize` (the API behind `Resize-Partition`), which
+resizes the partition and its NTFS/ReFS file system together. Shrinking releases space at the END of
+the volume; Windows may first move files out of that area. Extending uses unallocated space directly
+after the volume. The start of the volume never moves.
+
+**Preconditions (all checked immediately before writing):**
+1. ShadowDisk is running as administrator.
+2. Same disk (number + `UniqueId`), same layout, and the partition is at the same offset with the same
+   size as when the plan was made.
+3. The disk is a ShadowDisk practice disk, not the Windows disk, online and writable.
+4. The size limits are asked for **again** (from Windows where possible) and the plan must pass every
+   check against them: NTFS/ReFS only, not protected, data fits, 1 MiB aligned, within the range,
+   and for extend, unallocated space directly after the volume.
+5. The user ticked the backup box and typed `SHRINK` or `EXTEND` on the confirmation screen.
+6. The Windows backend independently re-checks the live disk and the partition's position.
+
+**Failure handling and rollback limits:**
+* One call, no retries, no cancellation once Windows has been asked.
+* Windows' resize either completes or reports an error; ShadowDisk does not try to undo or correct it.
+* Success is only reported when the read-back shows the partition at the same offset with exactly the
+  planned size. A different size is reported as "partly applied"; a missing partition is reported with
+  advice to check Disk Management before doing anything else.
+* An extend can be reversed by a shrink only as far as Windows allows at that time.
+
+**Tests:** `OperationTests` cover shrink and extend success with read-back, shrink below the fresh
+limit refused, physical disk refused, partition changed since planning refused, failure without retry,
+Windows resizing to a different size (partial), and a same-size request doing nothing.
+
+**Manual test (practice disk only):** create a practice disk and a 200 MiB volume, then
+extend it to about 600 MiB, then shrink it to about 300 MiB, checking each result in Disk Management
+and that a test file copied onto the volume still opens afterwards.
+
 ## Not yet enabled
-* Extend volume and shrink volume: planning only, until create-volume has been proven.
 * Any change to a physical disk.
+* Moving partitions (Stage 5).

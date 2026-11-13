@@ -194,7 +194,7 @@ public sealed class MainViewModel : ObservableObject
         }
         IPartitionLimitsProvider limits = IsSimulated ? new EstimatedLimitsProvider() : new WindowsPartitionLimitsProvider();
         Plan = new PlanViewModel(SelectedDisk.Layout, SelectedRow.Region, limits, _policy, IsElevated, IsSimulated,
-            IsSimulated ? null : new Func<CreateVolumeOrder, PlanResult, Task>(ApplyCreateVolumeAsync));
+            IsSimulated ? null : new Func<DiskLayout, PlanResult, Task>(ApplyPlanAsync));
     }
 
     public async Task RefreshAsync()
@@ -249,15 +249,21 @@ public sealed class MainViewModel : ObservableObject
 
     // ---------------- Stage 3: real operations (practice disks only) ----------------
 
-    private async Task ApplyCreateVolumeAsync(CreateVolumeOrder order, PlanResult plan)
+    private async Task ApplyPlanAsync(DiskLayout layout, PlanResult plan)
     {
-        var disk = SelectedDisk?.Disk;
-        if (disk is null || disk.Number != order.DiskNumber) return;
+        var disk = layout.Disk;
+        if (SelectedDisk?.Disk.Number != disk.Number) return;
+        var kindText = plan.Request.Kind switch
+        {
+            PlanKind.ShrinkVolume => "Shrink",
+            PlanKind.ExtendVolume => "Extend",
+            _ => "Create volume",
+        };
 
         var dialog = new ConfirmChangeWindow(disk, plan) { Owner = Application.Current.MainWindow };
         if (dialog.ShowDialog() != true)
         {
-            AppServices.Log.Info("Create volume: cancelled at the confirmation screen. Nothing was changed.");
+            AppServices.Log.Info($"{kindText}: cancelled at the confirmation screen. Nothing was changed.");
             return;
         }
 
@@ -266,8 +272,23 @@ public sealed class MainViewModel : ObservableObject
         OperationOutcome outcome;
         try
         {
-            var runner = new OperationRunner(new WindowsStorageInventory(), new WindowsDiskOperations(_policy), _policy, AppServices.Log);
-            outcome = await runner.CreateVolumeAsync(order, CancellationToken.None);
+            var runner = new OperationRunner(new WindowsStorageInventory(), new WindowsDiskOperations(_policy), _policy,
+                AppServices.Log, new WindowsPartitionLimitsProvider());
+            var fingerprint = LayoutFingerprint.Of(disk);
+            if (plan.Request.Kind == PlanKind.CreateVolume && plan.ProposedRegion?.Partition is { } created)
+            {
+                outcome = await runner.CreateVolumeAsync(new CreateVolumeOrder(disk.Number, disk.UniqueId, fingerprint,
+                    created.OffsetBytes, created.SizeBytes, "Practice"), CancellationToken.None);
+            }
+            else if (plan.Request.Partition is { } p)
+            {
+                outcome = await runner.ResizeAsync(new ResizeOrder(disk.Number, disk.UniqueId, fingerprint,
+                    p.PartitionNumber, p.OffsetBytes, p.SizeBytes, plan.Request.TargetSizeBytes), CancellationToken.None);
+            }
+            else
+            {
+                return;
+            }
         }
         finally
         {

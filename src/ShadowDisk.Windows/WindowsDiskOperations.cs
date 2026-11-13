@@ -21,23 +21,57 @@ public sealed class WindowsDiskOperations(OperationPolicy policy) : IDiskOperati
     public Task<CreateVolumeBackendResult> CreateVolumeAsync(PhysicalDisk disk, long offsetBytes, long sizeBytes, string volumeLabel) =>
         Task.Run(() => CreateVolume(disk, offsetBytes, sizeBytes, volumeLabel));
 
+    public Task<ResizeBackendResult> ResizePartitionAsync(PhysicalDisk disk, int partitionNumber, long offsetBytes, long targetSizeBytes) =>
+        Task.Run(() => Resize(disk, partitionNumber, offsetBytes, targetSizeBytes));
+
+    /// <summary>
+    /// One call to MSFT_Partition.Resize, which resizes the partition and its NTFS/ReFS file system
+    /// together (the API behind Resize-Partition). Shrinking may move files inside the volume first.
+    /// </summary>
+    private ResizeBackendResult Resize(PhysicalDisk disk, int partitionNumber, long offsetBytes, long targetSizeBytes)
+    {
+        if (!Elevation.IsElevated())
+            return new(false, "Administrator rights are needed. Use “Restart as administrator”.");
+        var refusal = CheckLiveDisk(disk, out var scope);
+        if (refusal is not null) return new(false, refusal);
+
+        using var partition = Wmi.Partition(scope!, disk.Number, partitionNumber);
+        if (partition is null)
+            return new(false, "The partition is no longer present.");
+        if (Convert.ToInt64(partition["Offset"], CultureInfo.InvariantCulture) != offsetBytes)
+            return new(false, "Refused: the partition is not at the expected position on the disk.");
+
+        var (code, _) = Wmi.Invoke(partition, "Resize", p => p["Size"] = (ulong)targetSizeBytes);
+        return code == 0 ? new(true, null) : new(false, "Resizing failed: " + Wmi.Explain(code));
+    }
+
+    /// <summary>Independent check that the live disk is the same ShadowDisk practice disk. Returns a refusal reason or null.</summary>
+    private string? CheckLiveDisk(PhysicalDisk disk, out ManagementScope? scope)
+    {
+        scope = null;
+        if (!policy.IsPracticeDisk(disk))
+            return "Refused: this is not a ShadowDisk practice disk.";
+        scope = Wmi.StorageScope();
+        using var live = Wmi.Disk(scope, disk.Number);
+        if (live is null)
+            return "The disk is no longer present.";
+        if (Wmi.ToUShort(live["BusType"]) != 15
+            || !string.Equals((live["Location"] as string)?.Trim(), disk.Location, StringComparison.OrdinalIgnoreCase)
+            || !string.Equals((live["UniqueId"] as string)?.Trim(), disk.UniqueId, StringComparison.Ordinal))
+            return "Refused: the live disk does not match the practice disk that was checked.";
+        return null;
+    }
+
     private CreateVolumeBackendResult CreateVolume(PhysicalDisk disk, long offsetBytes, long sizeBytes, string volumeLabel)
     {
         if (!Elevation.IsElevated())
             return new(false, false, null, "Administrator rights are needed. Use “Restart as administrator”.");
-        if (!policy.IsPracticeDisk(disk))
-            return new(false, false, null, "Refused: this is not a ShadowDisk practice disk.");
-
-        var scope = Wmi.StorageScope();
+        var refusal = CheckLiveDisk(disk, out var checkedScope);
+        if (refusal is not null) return new(false, false, null, refusal);
+        var scope = checkedScope!;
         using var live = Wmi.Disk(scope, disk.Number);
         if (live is null)
             return new(false, false, null, "The disk is no longer present.");
-        var liveLocation = (live["Location"] as string)?.Trim();
-        var liveId = (live["UniqueId"] as string)?.Trim();
-        if (Wmi.ToUShort(live["BusType"]) != 15
-            || !string.Equals(liveLocation, disk.Location, StringComparison.OrdinalIgnoreCase)
-            || !string.Equals(liveId, disk.UniqueId, StringComparison.Ordinal))
-            return new(false, false, null, "Refused: the live disk does not match the practice disk that was checked.");
 
         // Step 1: create the partition (no drive letter yet, so Explorer doesn't pop up a "format?" prompt).
         var (createCode, createOut) = Wmi.Invoke(live, "CreatePartition", p =>

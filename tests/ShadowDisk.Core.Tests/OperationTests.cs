@@ -34,6 +34,25 @@ internal sealed class FakeDiskOperations(FakeInventory inventory) : IDiskOperati
     public bool FailFormat { get; set; }
     public bool Throw { get; set; }
 
+    public int ResizeCalls { get; private set; }
+    public long? ResizeTo { get; set; }   // simulate Windows resizing to a different size than asked
+
+    public Task<ResizeBackendResult> ResizePartitionAsync(PhysicalDisk disk, int partitionNumber, long offsetBytes, long targetSizeBytes)
+    {
+        ResizeCalls++;
+        if (Throw) throw new InvalidOperationException("simulated crash");
+        if (FailCompletely) return Task.FromResult(new ResizeBackendResult(false, "The extent specified is not valid"));
+        var size = ResizeTo ?? targetSizeBytes;
+        var index = inventory.Disks.FindIndex(d => d.Number == disk.Number);
+        inventory.Disks[index] = disk with
+        {
+            Partitions = disk.Partitions.Select(p => p.PartitionNumber == partitionNumber
+                ? p with { SizeBytes = size, Volume = p.Volume is { } v ? v with { SizeBytes = size, FreeBytes = size - v.UsedBytes } : null }
+                : p).ToList(),
+        };
+        return Task.FromResult(new ResizeBackendResult(true, null));
+    }
+
     public Task<CreateVolumeBackendResult> CreateVolumeAsync(PhysicalDisk disk, long offsetBytes, long sizeBytes, string volumeLabel)
     {
         Calls++;
@@ -204,6 +223,108 @@ public class OperationTests
         Assert.True(outcome.DiskMayHaveChanged);
         Assert.Contains("did not try to undo", outcome.Message);
         Assert.Equal(1, ops.Calls);
+    }
+
+    // ---------- Resize (shrink / extend) ----------
+
+    private static PhysicalDisk PracticeDiskWithVolume(long volumeSize = 400 * MiB, long used = 50 * MiB)
+    {
+        var d = PracticeDisk();
+        var vol = new Partition(d.Number, 2, 16 * MiB, volumeSize, PartitionKind.Basic, ShadowDisk.Core.Mapping.StorageMapper.GptBasicData, null,
+            false, false, false, false, new Volume("P", "Practice", "NTFS", volumeSize, volumeSize - used, ReportedHealth.Healthy, EncryptionState.NotEncrypted));
+        return d with { Partitions = d.Partitions.Append(vol).ToList() };
+    }
+
+    private static ResizeOrder ResizeFor(PhysicalDisk disk, long target)
+    {
+        var p = disk.Partitions.Single(x => x.PartitionNumber == 2);
+        return new ResizeOrder(disk.Number, disk.UniqueId, LayoutFingerprint.Of(disk), 2, p.OffsetBytes, p.SizeBytes, target);
+    }
+
+    [Fact]
+    public async Task Shrinks_a_practice_volume_and_verifies_the_new_size()
+    {
+        var disk = PracticeDiskWithVolume();
+        var (runner, inventory, ops, _) = Setup(disk);
+        var outcome = await runner.ResizeAsync(ResizeFor(disk, 200 * MiB), CancellationToken.None);
+        Assert.Equal(OperationStatus.Succeeded, outcome.Status);
+        Assert.Equal(1, ops.ResizeCalls);
+        Assert.Equal(200 * MiB, inventory.Disks[0].Partitions.Single(p => p.PartitionNumber == 2).SizeBytes);
+        Assert.Contains(outcome.Steps, s => s.Contains("size limits again"));
+    }
+
+    [Fact]
+    public async Task Extends_a_practice_volume_into_the_free_space_after_it()
+    {
+        var disk = PracticeDiskWithVolume();
+        var (runner, _, ops, _) = Setup(disk);
+        var outcome = await runner.ResizeAsync(ResizeFor(disk, 800 * MiB), CancellationToken.None);
+        Assert.Equal(OperationStatus.Succeeded, outcome.Status);
+        Assert.Equal(1, ops.ResizeCalls);
+    }
+
+    [Fact]
+    public async Task Shrink_below_the_fresh_limit_is_refused()
+    {
+        var disk = PracticeDiskWithVolume(used: 300 * MiB);
+        var (runner, _, ops, _) = Setup(disk);
+        var outcome = await runner.ResizeAsync(ResizeFor(disk, 200 * MiB), CancellationToken.None);
+        Assert.Equal(OperationStatus.Blocked, outcome.Status);
+        Assert.Equal(0, ops.ResizeCalls);
+    }
+
+    [Fact]
+    public async Task Resize_on_a_physical_disk_is_refused()
+    {
+        var disk = PracticeDiskWithVolume() with { Bus = BusType.Nvme, Location = "PCI" };
+        var (runner, _, ops, _) = Setup(disk);
+        var outcome = await runner.ResizeAsync(ResizeFor(disk, 200 * MiB), CancellationToken.None);
+        Assert.Equal(OperationStatus.Blocked, outcome.Status);
+        Assert.Equal(0, ops.ResizeCalls);
+    }
+
+    [Fact]
+    public async Task Resize_is_refused_when_the_partition_changed_size_since_planning()
+    {
+        var disk = PracticeDiskWithVolume();
+        var (runner, inventory, ops, _) = Setup(disk);
+        var order = ResizeFor(disk, 200 * MiB);
+        inventory.Disks[0] = disk with { Partitions = disk.Partitions.Select(p => p.PartitionNumber == 2 ? p with { SizeBytes = 300 * MiB } : p).ToList() };
+        var outcome = await runner.ResizeAsync(order, CancellationToken.None);
+        Assert.Equal(OperationStatus.Blocked, outcome.Status);
+        Assert.Equal(0, ops.ResizeCalls);
+    }
+
+    [Fact]
+    public async Task Resize_failure_is_reported_once_without_retry()
+    {
+        var disk = PracticeDiskWithVolume();
+        var (runner, _, ops, _) = Setup(disk);
+        ops.FailCompletely = true;
+        var outcome = await runner.ResizeAsync(ResizeFor(disk, 200 * MiB), CancellationToken.None);
+        Assert.Equal(OperationStatus.Failed, outcome.Status);
+        Assert.Equal(1, ops.ResizeCalls);
+    }
+
+    [Fact]
+    public async Task Resize_to_a_different_size_than_asked_is_reported_as_partial()
+    {
+        var disk = PracticeDiskWithVolume();
+        var (runner, _, ops, _) = Setup(disk);
+        ops.ResizeTo = 250 * MiB;
+        var outcome = await runner.ResizeAsync(ResizeFor(disk, 200 * MiB), CancellationToken.None);
+        Assert.Equal(OperationStatus.PartiallyApplied, outcome.Status);
+        Assert.Contains("instead of", outcome.Message);
+    }
+
+    [Fact]
+    public async Task Same_size_resize_does_nothing()
+    {
+        var disk = PracticeDiskWithVolume();
+        var (runner, _, ops, _) = Setup(disk);
+        var outcome = await runner.ResizeAsync(ResizeFor(disk, 400 * MiB), CancellationToken.None);
+        Assert.Equal(OperationStatus.Blocked, outcome.Status);
+        Assert.Equal(0, ops.ResizeCalls);
     }
 
     [Fact]

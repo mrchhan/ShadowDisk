@@ -39,7 +39,7 @@ public sealed class PlanViewModel : ObservableObject
     private readonly IPartitionLimitsProvider _limitsProvider;
     private readonly OperationPolicy _policy;
     private readonly bool _isElevated;
-    private readonly Func<CreateVolumeOrder, PlanResult, Task>? _applyCreateVolume;
+    private readonly Func<DiskLayout, PlanResult, Task>? _apply;
     private CancellationTokenSource? _limitsCts;
 
     private PlanOption? _selectedOption;
@@ -50,7 +50,7 @@ public sealed class PlanViewModel : ObservableObject
     private PlanResult? _result;
 
     public PlanViewModel(DiskLayout layout, DiskRegion region, IPartitionLimitsProvider limitsProvider,
-        OperationPolicy policy, bool isElevated, bool isSimulated, Func<CreateVolumeOrder, PlanResult, Task>? applyCreateVolume)
+        OperationPolicy policy, bool isElevated, bool isSimulated, Func<DiskLayout, PlanResult, Task>? apply)
     {
         _layout = layout;
         _region = region;
@@ -58,7 +58,7 @@ public sealed class PlanViewModel : ObservableObject
         _policy = policy;
         _isElevated = isElevated;
         _isSimulated = isSimulated;
-        _applyCreateVolume = applyCreateVolume;
+        _apply = apply;
         ApplyCommand = new RelayCommand(() => _ = ApplyAsync(), () => CanApply && !_isApplying);
         HandleDragCommand = new DelegateCommand<long>(DragTo, _ => _limits?.IsUsable == true);
 
@@ -108,7 +108,14 @@ public sealed class PlanViewModel : ObservableObject
 
     public RelayCommand ApplyCommand { get; }
 
-    /// <summary>True only for a valid "create volume" plan on a ShadowDisk practice disk, run as administrator.</summary>
+    public string ApplyButtonText => Result?.Request.Kind switch
+    {
+        PlanKind.ShrinkVolume => $"Shrink {_region.Partition?.DisplayName} for real…",
+        PlanKind.ExtendVolume => $"Extend {_region.Partition?.DisplayName} for real…",
+        _ => "Create this volume for real…",
+    };
+
+    /// <summary>True only for a valid plan on a ShadowDisk practice disk, run as administrator.</summary>
     public bool CanApply => ApplyBlockedReason is null;
     public bool ShowApplyArea => Result?.IsValid == true;
 
@@ -121,10 +128,8 @@ public sealed class PlanViewModel : ObservableObject
             if (_isSimulated) return "These are simulated demo disks. Switch the source to “This PC” and use a practice disk.";
             var notAllowed = _policy.WhyNotAllowed(_layout.Disk);
             if (notAllowed.Count > 0) return notAllowed[0];
-            if (r.Request.Kind != PlanKind.CreateVolume)
-                return "In this version, only “Create a new volume” can be applied for real. Extend and shrink come next, after more testing.";
             if (!_isElevated) return "Real changes need administrator rights. Use “Restart as administrator”.";
-            if (_applyCreateVolume is null) return "Applying is not available.";
+            if (_apply is null) return "Applying is not available.";
             return null;
         }
     }
@@ -236,6 +241,7 @@ public sealed class PlanViewModel : ObservableObject
             OnPropertyChanged(nameof(CanApply));
             OnPropertyChanged(nameof(ShowApplyArea));
             OnPropertyChanged(nameof(ApplyBlockedReason));
+            OnPropertyChanged(nameof(ApplyButtonText));
         }
     }
 
@@ -346,18 +352,11 @@ public sealed class PlanViewModel : ObservableObject
 
     private async Task ApplyAsync()
     {
-        if (!CanApply || Result is not { } plan || plan.ProposedRegion?.Partition is not { } created || _applyCreateVolume is null) return;
-        var order = new CreateVolumeOrder(
-            DiskNumber: _layout.Disk.Number,
-            DiskUniqueId: _layout.Disk.UniqueId,
-            LayoutFingerprint: LayoutFingerprint.Of(_layout.Disk),
-            OffsetBytes: created.OffsetBytes,
-            SizeBytes: created.SizeBytes,
-            VolumeLabel: "Practice");
+        if (!CanApply || Result is not { IsValid: true } plan || _apply is null) return;
         _isApplying = true;
         try
         {
-            await _applyCreateVolume(order, plan);
+            await _apply(_layout, plan);
         }
         finally
         {

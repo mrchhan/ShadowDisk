@@ -42,7 +42,7 @@ public static class PlanLimits
 
     /// <summary>
     /// ShadowDisk's own estimate when Windows can't be asked. Deliberately cautious: data plus
-    /// 10% (at least 1 GiB) headroom. Windows' real minimum may still be higher because some
+    /// headroom (10% of the data, or 10% of the volume up to 1 GiB, whichever is larger). Windows' real minimum may still be higher because some
     /// files (page file, shadow copies, file-system metadata) can't be moved.
     /// </summary>
     public static SizeLimits Estimate(DiskLayout layout, Partition p, PlanKind kind, string? note = null)
@@ -52,7 +52,9 @@ public static class PlanLimits
             case PlanKind.ShrinkVolume:
             {
                 var used = p.Volume?.UsedBytes ?? p.SizeBytes;
-                var min = AlignUp(DataFootprint(p) + Math.Max(ByteSize.GiB, used / 10));
+                // Headroom: 10% of the data, or 10% of the volume (at most 1 GiB), whichever is larger.
+                var headroom = Math.Max(used / 10, Math.Min(ByteSize.GiB, p.SizeBytes / 10));
+                var min = AlignUp(DataFootprint(p) + headroom);
                 var max = AlignDown(p.SizeBytes - Alignment);
                 return new SizeLimits(Math.Min(min, p.SizeBytes), max, LimitsSource.Estimated,
                     note ?? "Estimated by ShadowDisk. Windows' real minimum may be higher because some files can't be moved.");

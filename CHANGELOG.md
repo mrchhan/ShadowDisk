@@ -5,6 +5,10 @@
 - **Create a new volume for real**, on practice disks only: re-checks the disk just before writing,
   final confirmation (backup tick + type CREATE), one attempt with no retry, read-back afterwards.
   See docs/OPERATIONS.md.
+- **Shrink and extend for real**, on practice disks only: size limits re-checked just before writing,
+  confirmation by typing SHRINK or EXTEND, one Windows call, read-back of the exact new size.
+- Clearer plan preview: dashed outline of only the space that changes, drag handle for the size,
+  and an explanation when a volume can't be extended (e.g. Recovery sits after C:).
 - Physical disks remain read-only.
 
 ## 0.2.0

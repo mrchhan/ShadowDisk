@@ -14,10 +14,16 @@ namespace ShadowDisk.App;
 /// </summary>
 public sealed class ConfirmChangeWindow : Window
 {
-    public const string ConfirmWord = "CREATE";
+    public static (string Word, string Button) WordsFor(PlanKind kind) => kind switch
+    {
+        PlanKind.ShrinkVolume => ("SHRINK", "Shrink volume"),
+        PlanKind.ExtendVolume => ("EXTEND", "Extend volume"),
+        _ => ("CREATE", "Create volume"),
+    };
 
     public ConfirmChangeWindow(PhysicalDisk disk, PlanResult plan)
     {
+        var (confirmWord, buttonText) = WordsFor(plan.Request.Kind);
         Title = "Confirm a real disk change";
         Width = 620;
         SizeToContent = SizeToContent.Height;
@@ -69,16 +75,16 @@ public sealed class ConfirmChangeWindow : Window
         };
         panel.Children.Add(backup);
 
-        panel.Children.Add(Body($"Type {ConfirmWord} to confirm:"));
+        panel.Children.Add(Body($"Type {confirmWord} to confirm:"));
         var confirm = new TextBox { Width = 160, HorizontalAlignment = HorizontalAlignment.Left, Padding = new Thickness(4, 3, 4, 3), Margin = new Thickness(0, 4, 0, 16) };
-        System.Windows.Automation.AutomationProperties.SetName(confirm, $"Type {ConfirmWord} to confirm");
+        System.Windows.Automation.AutomationProperties.SetName(confirm, $"Type {confirmWord} to confirm");
         panel.Children.Add(confirm);
 
         var buttons = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Right };
         var cancel = new Button { Content = "Cancel", IsCancel = true, IsDefault = true, MinWidth = 100, Padding = new Thickness(12, 5, 12, 5), Margin = new Thickness(0, 0, 8, 0) };
         var apply = new Button
         {
-            Content = "Create volume",
+            Content = buttonText,
             MinWidth = 140,
             Padding = new Thickness(12, 5, 12, 5),
             IsEnabled = false,
@@ -88,7 +94,7 @@ public sealed class ConfirmChangeWindow : Window
         cancel.Click += (_, _) => DialogResult = false;
         apply.Click += (_, _) => DialogResult = true;
 
-        void Update() => apply.IsEnabled = backup.IsChecked == true && confirm.Text.Trim() == ConfirmWord;
+        void Update() => apply.IsEnabled = backup.IsChecked == true && confirm.Text.Trim() == confirmWord;
         backup.Checked += (_, _) => Update();
         backup.Unchecked += (_, _) => Update();
         confirm.TextChanged += (_, _) => Update();
