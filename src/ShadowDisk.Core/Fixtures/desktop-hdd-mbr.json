@@ -1,0 +1,17 @@
+// Secondary data HDD: MBR, two volumes and a large unallocated region at the end.
+[
+  {
+    "Number": 1, "FriendlyName": "Demo SATA HDD 1TB", "SerialNumber": "DEMO-WD-7781",
+    "SizeBytes": 1000204886016, "LogicalSectorSize": 512, "PhysicalSectorSize": 4096,
+    "Style": "Mbr", "Bus": "Sata", "IsBoot": false, "IsSystem": false, "IsOffline": false, "IsReadOnly": false,
+    "Health": "Healthy",
+    "Partitions": [
+      { "DiskNumber": 1, "PartitionNumber": 1, "OffsetBytes": 1048576, "SizeBytes": 429496729600, "Kind": "Basic",
+        "MbrType": 7, "IsBoot": false, "IsSystem": false, "IsActive": false, "IsHidden": false,
+        "Volume": { "DriveLetter": "D", "Label": "Data", "FileSystem": "NTFS", "SizeBytes": 429496725504, "FreeBytes": 128849018880, "Health": "Healthy", "Encryption": "NotEncrypted" } },
+      { "DiskNumber": 1, "PartitionNumber": 2, "OffsetBytes": 429497778176, "SizeBytes": 214748364800, "Kind": "Basic",
+        "MbrType": 7, "IsBoot": false, "IsSystem": false, "IsActive": false, "IsHidden": false,
+        "Volume": { "DriveLetter": "E", "Label": "Media", "FileSystem": "EXFAT", "SizeBytes": 214748364800, "FreeBytes": 10737418240, "Health": "Healthy", "Encryption": "NotEncrypted" } }
+    ]
+  }
+]

@@ -1,0 +1,10 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/ShadowDisk.App/ShadowDisk.App.csproj" />
+    <Project Path="src/ShadowDisk.Core/ShadowDisk.Core.csproj" />
+    <Project Path="src/ShadowDisk.Windows/ShadowDisk.Windows.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/ShadowDisk.Core.Tests/ShadowDisk.Core.Tests.csproj" />
+  </Folder>
+</Solution>

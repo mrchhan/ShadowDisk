@@ -1,0 +1,10 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <RootNamespace>ShadowDisk.Core</RootNamespace>
+  </PropertyGroup>
+  <ItemGroup>
+    <EmbeddedResource Include="Fixtures\*.json" />
+    <InternalsVisibleTo Include="ShadowDisk.Core.Tests" />
+  </ItemGroup>
+</Project>

@@ -1,0 +1,22 @@
+// Typical Windows 11 laptop: GPT, EFI + MSR + C: (BitLocker) + recovery at the end.
+[
+  {
+    "Number": 0, "FriendlyName": "Demo NVMe SSD 512GB", "SerialNumber": "DEMO-0000-0000-A1B2",
+    "SizeBytes": 512110190592, "LogicalSectorSize": 512, "PhysicalSectorSize": 4096,
+    "Style": "Gpt", "Bus": "Nvme", "IsBoot": true, "IsSystem": true, "IsOffline": false, "IsReadOnly": false,
+    "Health": "Healthy",
+    "Partitions": [
+      { "DiskNumber": 0, "PartitionNumber": 1, "OffsetBytes": 1048576, "SizeBytes": 104857600, "Kind": "EfiSystem",
+        "GptType": "{c12a7328-f81f-11d2-ba4b-00a0c93ec93b}", "IsBoot": false, "IsSystem": true, "IsActive": false, "IsHidden": true,
+        "Volume": { "DriveLetter": null, "Label": null, "FileSystem": "FAT32", "SizeBytes": 99614720, "FreeBytes": 69206016, "Health": "Healthy", "Encryption": "NotEncrypted" } },
+      { "DiskNumber": 0, "PartitionNumber": 2, "OffsetBytes": 105906176, "SizeBytes": 16777216, "Kind": "MicrosoftReserved",
+        "GptType": "{e3c9e316-0b5c-4db8-817d-f92df00215ae}", "IsBoot": false, "IsSystem": false, "IsActive": false, "IsHidden": true, "Volume": null },
+      { "DiskNumber": 0, "PartitionNumber": 3, "OffsetBytes": 122683392, "SizeBytes": 511198978048, "Kind": "Basic",
+        "GptType": "{ebd0a0a2-b9e5-4433-87c0-68b6b72699c7}", "IsBoot": true, "IsSystem": false, "IsActive": false, "IsHidden": false,
+        "Volume": { "DriveLetter": "C", "Label": "Windows", "FileSystem": "NTFS", "SizeBytes": 511198973952, "FreeBytes": 198347612160, "Health": "Healthy", "Encryption": "Encrypted" } },
+      { "DiskNumber": 0, "PartitionNumber": 4, "OffsetBytes": 511321661440, "SizeBytes": 786432000, "Kind": "Recovery",
+        "GptType": "{de94bba4-06d1-4d40-a16a-bfd50179d6ac}", "IsBoot": false, "IsSystem": false, "IsActive": false, "IsHidden": true,
+        "Volume": { "DriveLetter": null, "Label": "Recovery", "FileSystem": "NTFS", "SizeBytes": 786427904, "FreeBytes": 104857600, "Health": "Healthy", "Encryption": "NotEncrypted" } }
+    ]
+  }
+]

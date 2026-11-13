@@ -1,0 +1,50 @@
+<Application x:Class="ShadowDisk.App.App"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:c="clr-namespace:ShadowDisk.App.Controls"
+             StartupUri="MainWindow.xaml">
+  <Application.Resources>
+    <ResourceDictionary>
+      <!-- Colours shared by the bar, the pie, the legend and the summary swatches. -->
+      <SolidColorBrush x:Key="UsedBrush" Color="#1D4ED8" />
+      <SolidColorBrush x:Key="FreeBrush" Color="#BFDBFE" />
+      <SolidColorBrush x:Key="SystemBrush" Color="#9CA3AF" />
+      <SolidColorBrush x:Key="AccentBrush" Color="#0F766E" />
+      <SolidColorBrush x:Key="SelectionBrush" Color="#F59E0B" />
+      <SolidColorBrush x:Key="PanelBrush" Color="#FFFFFF" />
+      <SolidColorBrush x:Key="WindowBrush" Color="#F3F4F6" />
+      <SolidColorBrush x:Key="MutedText" Color="#4B5563" />
+      <DrawingBrush x:Key="UnallocatedBrush" TileMode="Tile" Viewport="0,0,8,8" ViewportUnits="Absolute">
+        <DrawingBrush.Drawing>
+          <DrawingGroup>
+            <GeometryDrawing Brush="White" Geometry="M0,0 L8,0 8,8 0,8Z" />
+            <GeometryDrawing Geometry="M0,8 L8,0">
+              <GeometryDrawing.Pen><Pen Brush="#6B7280" Thickness="1.2" /></GeometryDrawing.Pen>
+            </GeometryDrawing>
+          </DrawingGroup>
+        </DrawingBrush.Drawing>
+      </DrawingBrush>
+
+      <Style x:Key="Card" TargetType="Border">
+        <Setter Property="Background" Value="{StaticResource PanelBrush}" />
+        <Setter Property="BorderBrush" Value="#E5E7EB" />
+        <Setter Property="BorderThickness" Value="1" />
+        <Setter Property="CornerRadius" Value="6" />
+        <Setter Property="Padding" Value="12" />
+        <Setter Property="Margin" Value="0,0,0,10" />
+      </Style>
+      <Style x:Key="SectionTitle" TargetType="TextBlock">
+        <Setter Property="FontSize" Value="14" />
+        <Setter Property="FontWeight" Value="SemiBold" />
+        <Setter Property="Margin" Value="0,0,0,8" />
+      </Style>
+      <Style TargetType="Button">
+        <Setter Property="Padding" Value="12,5" />
+        <Setter Property="Margin" Value="0,0,6,0" />
+        <Setter Property="MinHeight" Value="30" />
+      </Style>
+      <BooleanToVisibilityConverter x:Key="BoolToVis" />
+      <c:InverseBoolToVisibilityConverter x:Key="InverseBoolToVis" />
+    </ResourceDictionary>
+  </Application.Resources>
+</Application>

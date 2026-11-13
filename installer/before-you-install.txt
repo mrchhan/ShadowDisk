@@ -1,0 +1,17 @@
+ShadowDisk 0.1 — read-only disk and partition inspector
+
+What this version does
+  - Shows your physical disks, partitions, volumes and unallocated space.
+  - Shows used data, free space inside volumes and unallocated space as a bar, a pie chart or a table.
+  - Shows the health status that Windows reports for each disk.
+  - Exports a plain-text report (serial numbers are masked).
+
+What this version does NOT do
+  - It does not resize, create, delete, format, initialize or write to any disk or partition.
+  - It does not scan for bad sectors. The health status shown comes from Windows and is not a surface scan.
+
+Future versions may add carefully limited changes. No disk tool can guarantee that data is never
+lost: hardware faults, power cuts and Windows limitations can still cause problems. Always keep a
+backup of anything important.
+
+ShadowDisk is free and open source (MIT licence): https://github.com/mrchhan/ShadowDisk

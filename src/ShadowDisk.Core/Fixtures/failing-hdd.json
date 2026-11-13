@@ -1,0 +1,18 @@
+// Ageing HDD that Windows flags with a health warning; also has a Linux partition.
+[
+  {
+    "Number": 5, "FriendlyName": "Demo Old HDD 500GB", "SerialNumber": "DEMO-OLD-1234",
+    "SizeBytes": 500107862016, "LogicalSectorSize": 512, "PhysicalSectorSize": 512,
+    "Style": "Gpt", "Bus": "Sata", "IsBoot": false, "IsSystem": false, "IsOffline": false, "IsReadOnly": false,
+    "Health": "Warning",
+    "Partitions": [
+      { "DiskNumber": 5, "PartitionNumber": 1, "OffsetBytes": 17408, "SizeBytes": 134217728, "Kind": "MicrosoftReserved",
+        "GptType": "{e3c9e316-0b5c-4db8-817d-f92df00215ae}", "IsBoot": false, "IsSystem": false, "IsActive": false, "IsHidden": true, "Volume": null },
+      { "DiskNumber": 5, "PartitionNumber": 2, "OffsetBytes": 135266304, "SizeBytes": 322122547200, "Kind": "Basic",
+        "GptType": "{ebd0a0a2-b9e5-4433-87c0-68b6b72699c7}", "IsBoot": false, "IsSystem": false, "IsActive": false, "IsHidden": false,
+        "Volume": { "DriveLetter": "G", "Label": "Old Backups", "FileSystem": "NTFS", "SizeBytes": 322122543104, "FreeBytes": 21474836480, "Health": "Warning", "Encryption": "Unknown" } },
+      { "DiskNumber": 5, "PartitionNumber": 3, "OffsetBytes": 322257813504, "SizeBytes": 177849008128, "Kind": "OemOrHidden",
+        "GptType": "{0fc63daf-8483-4772-8e79-3d69d8477de4}", "IsBoot": false, "IsSystem": false, "IsActive": false, "IsHidden": false, "Volume": null }
+    ]
+  }
+]

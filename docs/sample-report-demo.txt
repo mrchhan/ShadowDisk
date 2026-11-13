@@ -1,0 +1,123 @@
+SHADOWDISK — DISK INVENTORY REPORT
+App version : 0.1.0
+Created     : 2026-11-12 19:35:57 +05:00
+Source      : Demo disks (simulated)  *** SIMULATED DATA — NOT YOUR REAL DISKS ***
+Mode        : This version only reads information. It does not change, format, resize or write to any disk.
+Sizes       : GiB = 1,073,741,824 bytes. Exact byte counts are shown in brackets.
+
+========================================================================
+Disk 0: Demo NVMe SSD 512GB
+  Serial          : ••••A1B2
+  Size            : 476.93 GiB (512,110,190,592 bytes)
+  Partition style : GPT
+  Connection      : NVMe
+  Sectors         : 512 bytes logical / 4096 bytes physical
+  Windows health  : Healthy (reported by Windows; this is not a surface scan)
+  Allocated       : 476.93 GiB (512,107,044,864 bytes)
+  Unallocated     : 2.00 MiB (2,097,152 bytes)
+
+  Layout (in disk order):
+    [1] EFI System           EfiSystem            100.00 MiB  FAT32  used 29.00 MiB, free 66.00 MiB, encryption NotEncrypted
+    [2] Microsoft Reserved   MicrosoftReserved     16.00 MiB
+    [3] C:                   Basic                476.09 GiB  NTFS   used 291.36 GiB, free 184.72 GiB, encryption Encrypted
+    [4] Recovery             Recovery             750.00 MiB  NTFS   used 649.99 MiB, free 100.00 MiB, encryption NotEncrypted
+    [ ] Unallocated                                 2.00 MiB
+
+  Notices:
+    - [Caution] Windows runs from this disk. This disk holds the running Windows installation or its boot files. Mistakes here can stop the PC from starting.
+    - [Blocking] Partition 1: EFI System Partition. Holds the files your PC needs to start. It is protected and will never be offered for changes.
+    - [Blocking] Partition 2: Microsoft Reserved Partition. Reserved by Windows. It is protected and will never be offered for changes.
+    - [Caution] Partition 3: BitLocker encrypted. Make sure you have the BitLocker recovery key saved somewhere other than this PC before any disk change.
+    - [Caution] Partition 4: Recovery partition. Used by Windows to repair or reset the PC. Moving or deleting it can break recovery and updates.
+
+========================================================================
+Disk 1: Demo SATA HDD 1TB
+  Serial          : ••••7781
+  Size            : 931.51 GiB (1,000,204,886,016 bytes)
+  Partition style : MBR
+  Connection      : SATA
+  Sectors         : 512 bytes logical / 4096 bytes physical
+  Windows health  : Healthy (reported by Windows; this is not a surface scan)
+  Allocated       : 600.00 GiB (644,245,094,400 bytes)
+  Unallocated     : 331.51 GiB (355,958,743,040 bytes)
+
+  Layout (in disk order):
+    [1] D:                   Basic                400.00 GiB  NTFS   used 279.99 GiB, free 120.00 GiB, encryption NotEncrypted
+    [2] E:                   Basic                200.00 GiB  EXFAT  used 190.00 GiB, free 10.00 GiB, encryption NotEncrypted
+    [ ] Unallocated                               331.51 GiB
+
+========================================================================
+Disk 2: Demo USB Flash Drive 32GB
+  Serial          : ••••0042
+  Size            : 29.81 GiB (32,010,928,128 bytes)
+  Partition style : MBR
+  Connection      : USB
+  Sectors         : 512 bytes logical / 512 bytes physical
+  Windows health  : Unknown (reported by Windows; this is not a surface scan)
+  Allocated       : 29.81 GiB (32,009,879,552 bytes)
+  Unallocated     : 0 bytes (0 bytes)
+
+  Layout (in disk order):
+    [1] F:                   Basic                 29.81 GiB  FAT32  used 11.18 GiB, free 18.62 GiB, encryption NotEncrypted
+
+  Notices:
+    - [Caution] Removable or USB disk. Removable drives can be unplugged mid-operation and many USB enclosures report incomplete health information.
+
+========================================================================
+Disk 3: Demo SATA SSD 256GB (new)
+  Serial          : ••••5555
+  Size            : 238.47 GiB (256,060,514,304 bytes)
+  Partition style : not initialized
+  Connection      : SATA
+  Sectors         : 512 bytes logical / 512 bytes physical
+  Windows health  : Healthy (reported by Windows; this is not a surface scan)
+  Allocated       : 0 bytes (0 bytes)
+  Unallocated     : 238.47 GiB (256,059,465,728 bytes)
+
+  Layout (in disk order):
+    [ ] Unallocated                               238.47 GiB
+
+  Notices:
+    - [Caution] Disk not initialized. Windows reports no partition table. Initializing a disk erases whatever is on it, so ShadowDisk will never do this without a separate, explicit request.
+
+========================================================================
+Disk 4: Demo Old HDD 500GB
+  Serial          : ••••1234
+  Size            : 465.76 GiB (500,107,862,016 bytes)
+  Partition style : GPT
+  Connection      : SATA
+  Sectors         : 512 bytes logical / 512 bytes physical
+  Windows health  : Warning (reported by Windows; this is not a surface scan)
+  Allocated       : 465.75 GiB (500,105,773,056 bytes)
+  Unallocated     : 0 bytes (0 bytes)
+
+  Layout (in disk order):
+    [1] Microsoft Reserved   MicrosoftReserved    128.00 MiB
+    [2] G:                   Basic                300.00 GiB  NTFS   used 279.99 GiB, free 20.00 GiB, encryption Unknown
+    [3] Partition 3          OemOrHidden          165.63 GiB
+
+  Notices:
+    - [Caution] Windows reports a health warning. Back up this disk before doing anything else with it.
+    - [Blocking] Partition 1: Microsoft Reserved Partition. Reserved by Windows. It is protected and will never be offered for changes.
+    - [Caution] Partition 3: Unrecognised partition type. This may be a vendor, Linux or other operating system partition. ShadowDisk will not offer changes to it.
+
+========================================================================
+Disk 5: Demo Dynamic Disk 2TB
+  Serial          : ••••9001
+  Size            : 1.81 TiB (2,000,398,934,016 bytes)
+  Partition style : GPT
+  Connection      : SATA
+  Sectors         : 512 bytes logical / 4096 bytes physical
+  Windows health  : Healthy (reported by Windows; this is not a surface scan)
+  Allocated       : 1.81 TiB (2,000,397,885,440 bytes)
+  Unallocated     : 0 bytes (0 bytes)
+
+  Layout (in disk order):
+    [1] Dynamic              LdmMetadata            1.00 MiB
+    [2] Microsoft Reserved   MicrosoftReserved    128.00 MiB
+    [3] Dynamic              LdmData                1.81 TiB
+
+  Notices:
+    - [Blocking] Dynamic disk. This is a dynamic disk. Dynamic disks are deprecated by Microsoft and are not supported by ShadowDisk. All change actions will stay disabled.
+    - [Blocking] Partition 2: Microsoft Reserved Partition. Reserved by Windows. It is protected and will never be offered for changes.
+

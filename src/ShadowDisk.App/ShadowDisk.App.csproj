@@ -1,0 +1,21 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <UseWPF>true</UseWPF>
+    <RootNamespace>ShadowDisk.App</RootNamespace>
+    <AssemblyName>ShadowDisk</AssemblyName>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <ApplicationIcon>Assets\shadowdisk.ico</ApplicationIcon>
+    <!-- Lets this Windows-only project also compile on Linux/macOS CI. -->
+    <EnableWindowsTargeting>true</EnableWindowsTargeting>
+    <RuntimeIdentifier>win-x64</RuntimeIdentifier>
+  </PropertyGroup>
+  <ItemGroup>
+    <Resource Include="Assets\shadowdisk.ico" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\ShadowDisk.Core\ShadowDisk.Core.csproj" />
+    <ProjectReference Include="..\ShadowDisk.Windows\ShadowDisk.Windows.csproj" />
+  </ItemGroup>
+</Project>

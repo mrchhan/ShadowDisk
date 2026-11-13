@@ -1,0 +1,14 @@
+// Removable USB stick, FAT32. Cannot be resized in place by Windows.
+[
+  {
+    "Number": 2, "FriendlyName": "Demo USB Flash Drive 32GB", "SerialNumber": "DEMO-USB-0042",
+    "SizeBytes": 32010928128, "LogicalSectorSize": 512, "PhysicalSectorSize": 512,
+    "Style": "Mbr", "Bus": "Usb", "IsBoot": false, "IsSystem": false, "IsOffline": false, "IsReadOnly": false,
+    "Health": "Unknown",
+    "Partitions": [
+      { "DiskNumber": 2, "PartitionNumber": 1, "OffsetBytes": 1048576, "SizeBytes": 32009879552, "Kind": "Basic",
+        "MbrType": 12, "IsBoot": false, "IsSystem": false, "IsActive": true, "IsHidden": false,
+        "Volume": { "DriveLetter": "F", "Label": "USB", "FileSystem": "FAT32", "SizeBytes": 32009879552, "FreeBytes": 20000000000, "Health": "Healthy", "Encryption": "NotEncrypted" } }
+    ]
+  }
+]

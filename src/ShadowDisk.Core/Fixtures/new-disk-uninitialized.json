@@ -1,0 +1,10 @@
+// Brand-new disk with no partition table. Initializing would erase it.
+[
+  {
+    "Number": 4, "FriendlyName": "Demo SATA SSD 256GB (new)", "SerialNumber": "DEMO-NEW-5555",
+    "SizeBytes": 256060514304, "LogicalSectorSize": 512, "PhysicalSectorSize": 512,
+    "Style": "Raw", "Bus": "Sata", "IsBoot": false, "IsSystem": false, "IsOffline": false, "IsReadOnly": false,
+    "Health": "Healthy",
+    "Partitions": []
+  }
+]

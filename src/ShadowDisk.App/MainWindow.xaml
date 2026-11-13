@@ -1,0 +1,279 @@
+<Window x:Class="ShadowDisk.App.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="clr-namespace:ShadowDisk.App.ViewModels"
+        xmlns:c="clr-namespace:ShadowDisk.App.Controls"
+        Title="{Binding WindowTitle}"
+        Width="1240" Height="820" MinWidth="980" MinHeight="640"
+        WindowStartupLocation="CenterScreen"
+        Icon="Assets/shadowdisk.ico"
+        Background="{StaticResource WindowBrush}"
+        FontFamily="Segoe UI" FontSize="13">
+  <Window.DataContext>
+    <vm:MainViewModel />
+  </Window.DataContext>
+
+  <DockPanel>
+    <!-- ===== Header: identity, read-only promise, data source ===== -->
+    <Border DockPanel.Dock="Top" Background="#111827" Padding="16,10">
+      <DockPanel>
+        <StackPanel Orientation="Horizontal" DockPanel.Dock="Left" VerticalAlignment="Center">
+          <TextBlock Text="ShadowDisk" Foreground="White" FontSize="20" FontWeight="SemiBold" />
+          <TextBlock Text="disk &amp; partition inspector" Foreground="#9CA3AF" Margin="10,6,0,0" />
+        </StackPanel>
+        <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center">
+          <Border Background="#B45309" CornerRadius="4" Padding="8,3" Margin="0,0,8,0"
+                  Visibility="{Binding IsSimulated, Converter={StaticResource BoolToVis}}">
+            <TextBlock Text="DEMO — SIMULATED DISKS" Foreground="White" FontWeight="Bold" />
+          </Border>
+          <Border Background="#065F46" CornerRadius="4" Padding="8,3"
+                  ToolTip="{Binding ReadOnlyStatement}">
+            <TextBlock Text="READ-ONLY — no changes are made to your disks" Foreground="White" FontWeight="SemiBold" />
+          </Border>
+        </StackPanel>
+      </DockPanel>
+    </Border>
+
+    <!-- ===== Toolbar ===== -->
+    <Border DockPanel.Dock="Top" Background="White" BorderBrush="#E5E7EB" BorderThickness="0,0,0,1" Padding="12,8">
+      <WrapPanel VerticalAlignment="Center">
+        <Button Content="_Refresh" Command="{Binding RefreshCommand}" AutomationProperties.Name="Refresh disk information" />
+        <TextBlock Text="Source:" VerticalAlignment="Center" Margin="10,0,6,0" />
+        <ComboBox ItemsSource="{Binding SourceOptions}" SelectedItem="{Binding Source}" Width="200" Margin="0,0,14,0"
+                  AutomationProperties.Name="Data source" />
+        <TextBlock Text="View:" VerticalAlignment="Center" Margin="0,0,6,0" />
+        <ComboBox ItemsSource="{Binding ViewOptions}" SelectedItem="{Binding View}" Width="110" Margin="0,0,14,0"
+                  AutomationProperties.Name="Visualization style" />
+        <Button Content="_Export report…" Command="{Binding ExportReportCommand}" />
+        <Button Content="Open Windows Disk Management" Command="{Binding OpenDiskManagementCommand}" />
+        <Button Content="Restart as administrator" Command="{Binding RestartElevatedCommand}"
+                ToolTip="Needed to read BitLocker status. Still read-only."
+                Visibility="{Binding IsElevated, Converter={StaticResource InverseBoolToVis}}" />
+        <Button Content="Log folder" Command="{Binding OpenLogFolderCommand}" />
+      </WrapPanel>
+    </Border>
+
+    <!-- ===== Banner for warnings / demo mode / errors ===== -->
+    <Border DockPanel.Dock="Top" Background="#FEF3C7" BorderBrush="#F59E0B" BorderThickness="0,0,0,1" Padding="14,7"
+            Visibility="{Binding HasBanner, Converter={StaticResource BoolToVis}}">
+      <TextBlock Text="{Binding BannerText}" TextWrapping="Wrap" Foreground="#78350F" />
+    </Border>
+
+    <!-- ===== Status bar ===== -->
+    <StatusBar DockPanel.Dock="Bottom">
+      <StatusBarItem>
+        <TextBlock Text="{Binding StatusText}" />
+      </StatusBarItem>
+    </StatusBar>
+
+    <!-- ===== Log ===== -->
+    <Expander DockPanel.Dock="Bottom" Header="Activity log" Margin="12,0,12,6" IsExpanded="False">
+      <ListBox ItemsSource="{Binding LogEntries}" Height="130" FontFamily="Consolas" FontSize="12"
+               AutomationProperties.Name="Activity log" />
+    </Expander>
+
+    <Grid Margin="12">
+      <Grid.ColumnDefinitions>
+        <ColumnDefinition Width="300" />
+        <ColumnDefinition Width="12" />
+        <ColumnDefinition Width="*" />
+      </Grid.ColumnDefinitions>
+
+      <!-- ===== Disk list ===== -->
+      <Border Style="{StaticResource Card}" Margin="0" Padding="8">
+        <DockPanel>
+          <TextBlock DockPanel.Dock="Top" Text="Physical disks" Style="{StaticResource SectionTitle}" Margin="4,0,0,8" />
+          <ListBox ItemsSource="{Binding Disks}" SelectedItem="{Binding SelectedDisk}" BorderThickness="0"
+                   AutomationProperties.Name="Physical disks" HorizontalContentAlignment="Stretch">
+            <ListBox.ItemTemplate>
+              <DataTemplate DataType="{x:Type vm:DiskItemViewModel}">
+                <StackPanel Margin="4,6" AutomationProperties.Name="{Binding Title}">
+                  <TextBlock Text="{Binding Title}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" />
+                  <TextBlock Text="{Binding Subtitle}" Foreground="{StaticResource MutedText}" />
+                  <TextBlock Text="{Binding Badges}" Foreground="#B45309" FontSize="12" />
+                </StackPanel>
+              </DataTemplate>
+            </ListBox.ItemTemplate>
+          </ListBox>
+        </DockPanel>
+      </Border>
+
+      <!-- ===== Selected disk ===== -->
+      <ScrollViewer Grid.Column="2" VerticalScrollBarVisibility="Auto"
+                    Visibility="{Binding HasDisk, Converter={StaticResource BoolToVis}}">
+        <StackPanel DataContext="{Binding SelectedDisk}">
+
+          <!-- Identity -->
+          <Border Style="{StaticResource Card}">
+            <Grid>
+              <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="*" />
+              </Grid.ColumnDefinitions>
+              <Grid.RowDefinitions>
+                <RowDefinition /><RowDefinition /><RowDefinition /><RowDefinition />
+              </Grid.RowDefinitions>
+              <TextBlock Grid.ColumnSpan="4" Text="{Binding Title}" FontSize="17" FontWeight="SemiBold" Margin="0,0,0,8" />
+              <TextBlock Grid.Row="1" Text="Size" Foreground="{StaticResource MutedText}" Margin="0,0,10,2" />
+              <TextBlock Grid.Row="1" Grid.Column="1" Text="{Binding SizeText}" />
+              <TextBlock Grid.Row="1" Grid.Column="2" Text="Partition style" Foreground="{StaticResource MutedText}" Margin="16,0,10,2" />
+              <TextBlock Grid.Row="1" Grid.Column="3" Text="{Binding StyleText}" />
+              <TextBlock Grid.Row="2" Text="Connection" Foreground="{StaticResource MutedText}" Margin="0,0,10,2" />
+              <TextBlock Grid.Row="2" Grid.Column="1" Text="{Binding BusDisplay}" />
+              <TextBlock Grid.Row="2" Grid.Column="2" Text="Sectors" Foreground="{StaticResource MutedText}" Margin="16,0,10,2" />
+              <TextBlock Grid.Row="2" Grid.Column="3" Text="{Binding SectorText}" />
+              <TextBlock Grid.Row="3" Text="Serial" Foreground="{StaticResource MutedText}" Margin="0,0,10,2" />
+              <TextBlock Grid.Row="3" Grid.Column="1" Text="{Binding SerialText}" />
+              <TextBlock Grid.Row="3" Grid.Column="2" Text="Windows-reported health" Foreground="{StaticResource MutedText}" Margin="16,0,10,2"
+                         ToolTip="This is the status Windows reports for the drive. It is not a bad-sector or surface scan and does not prove the disk is safe." />
+              <TextBlock Grid.Row="3" Grid.Column="3" Text="{Binding HealthText}" FontWeight="SemiBold" />
+            </Grid>
+          </Border>
+
+          <!-- Space summary + chart -->
+          <Border Style="{StaticResource Card}">
+            <StackPanel>
+              <TextBlock Text="Space on this disk" Style="{StaticResource SectionTitle}" />
+              <WrapPanel Margin="0,0,0,10">
+                <StackPanel Orientation="Horizontal" Margin="0,0,20,4">
+                  <Rectangle Width="14" Height="14" Fill="{StaticResource UsedBrush}" Margin="0,0,6,0" />
+                  <TextBlock><Run Text="Used data: " /><Run Text="{Binding UsedText, Mode=OneWay}" FontWeight="SemiBold" /></TextBlock>
+                </StackPanel>
+                <StackPanel Orientation="Horizontal" Margin="0,0,20,4">
+                  <Rectangle Width="14" Height="14" Fill="{StaticResource FreeBrush}" Stroke="#93C5FD" Margin="0,0,6,0" />
+                  <TextBlock><Run Text="Free inside volumes: " /><Run Text="{Binding FreeText, Mode=OneWay}" FontWeight="SemiBold" /></TextBlock>
+                </StackPanel>
+                <StackPanel Orientation="Horizontal" Margin="0,0,20,4">
+                  <Rectangle Width="14" Height="14" Fill="{StaticResource SystemBrush}" Margin="0,0,6,0" />
+                  <TextBlock Text="System / reserved partitions" />
+                </StackPanel>
+                <StackPanel Orientation="Horizontal" Margin="0,0,20,4">
+                  <Rectangle Width="14" Height="14" Fill="{StaticResource UnallocatedBrush}" Stroke="#6B7280" Margin="0,0,6,0" />
+                  <TextBlock><Run Text="Unallocated (no partition): " /><Run Text="{Binding UnallocatedText, Mode=OneWay}" FontWeight="SemiBold" /></TextBlock>
+                </StackPanel>
+              </WrapPanel>
+
+              <c:DiskBarView Layout="{Binding Layout}"
+                             SelectedRegion="{Binding DataContext.SelectedRegion, RelativeSource={RelativeSource AncestorType=Window}}"
+                             Visibility="{Binding DataContext.ShowBar, RelativeSource={RelativeSource AncestorType=Window}, Converter={StaticResource BoolToVis}}"
+                             AutomationProperties.HelpText="Disk layout bar. Use the partition table below for exact values." />
+
+              <c:DiskPieView Layout="{Binding Layout}" HorizontalAlignment="Left"
+                             SelectedRegion="{Binding DataContext.SelectedRegion, RelativeSource={RelativeSource AncestorType=Window}}"
+                             Visibility="{Binding DataContext.ShowPie, RelativeSource={RelativeSource AncestorType=Window}, Converter={StaticResource BoolToVis}}"
+                             AutomationProperties.HelpText="Disk layout donut chart. Use the partition table below for exact values." />
+
+              <TextBlock Text="Click a block or slice to select it. Very small partitions are drawn slightly larger than scale so they stay visible. The table below shows exact sizes."
+                         Foreground="{StaticResource MutedText}" FontSize="12" TextWrapping="Wrap" Margin="0,6,0,0" />
+            </StackPanel>
+          </Border>
+
+          <!-- Table (always shown: the textual alternative to the charts) -->
+          <Border Style="{StaticResource Card}">
+            <StackPanel>
+              <TextBlock Text="Partitions and unallocated space (disk order)" Style="{StaticResource SectionTitle}" />
+              <DataGrid ItemsSource="{Binding Rows}"
+                        SelectedItem="{Binding DataContext.SelectedRow, RelativeSource={RelativeSource AncestorType=Window}}"
+                        AutoGenerateColumns="False" IsReadOnly="True" CanUserSortColumns="False" CanUserReorderColumns="False"
+                        HeadersVisibility="Column" SelectionMode="Single" GridLinesVisibility="Horizontal"
+                        HorizontalGridLinesBrush="#E5E7EB" BorderThickness="0" RowHeight="28"
+                        AutomationProperties.Name="Partition table">
+                <DataGrid.Columns>
+                  <DataGridTextColumn Header="#" Binding="{Binding Number}" Width="40" />
+                  <DataGridTextColumn Header="Name" Binding="{Binding Name}" Width="2*" />
+                  <DataGridTextColumn Header="Type" Binding="{Binding Type}" Width="2*" />
+                  <DataGridTextColumn Header="File system" Binding="{Binding FileSystem}" Width="*" />
+                  <DataGridTextColumn Header="Starts at" Binding="{Binding Start}" Width="*" />
+                  <DataGridTextColumn Header="Size" Binding="{Binding Size}" Width="*" />
+                  <DataGridTextColumn Header="Used" Binding="{Binding Used}" Width="*" />
+                  <DataGridTextColumn Header="Free" Binding="{Binding Free}" Width="*" />
+                  <DataGridTextColumn Header="Encryption" Binding="{Binding Encryption}" Width="*" />
+                </DataGrid.Columns>
+              </DataGrid>
+            </StackPanel>
+          </Border>
+
+          <!-- Selected region details -->
+          <Border Style="{StaticResource Card}"
+                  DataContext="{Binding DataContext.SelectedRow, RelativeSource={RelativeSource AncestorType=Window}}">
+            <StackPanel>
+              <TextBlock Style="{StaticResource SectionTitle}">
+                <Run Text="Selected: " /><Run Text="{Binding Name, Mode=OneWay}" />
+              </TextBlock>
+              <TextBlock Foreground="{StaticResource MutedText}" Margin="0,0,0,8">
+                <Run Text="{Binding Type, Mode=OneWay}" /><Run Text=" · " /><Run Text="{Binding SizeExact, Mode=OneWay}" />
+              </TextBlock>
+
+              <ItemsControl ItemsSource="{Binding Notices}">
+                <ItemsControl.ItemTemplate>
+                  <DataTemplate DataType="{x:Type vm:NoticeViewModel}">
+                    <StackPanel Margin="0,0,0,6">
+                      <TextBlock FontWeight="SemiBold" Foreground="{Binding Color}">
+                        <Run Text="{Binding Severity, Mode=OneWay}" /><Run Text=": " /><Run Text="{Binding Title, Mode=OneWay}" />
+                      </TextBlock>
+                      <TextBlock Text="{Binding Detail}" TextWrapping="Wrap" />
+                    </StackPanel>
+                  </DataTemplate>
+                </ItemsControl.ItemTemplate>
+              </ItemsControl>
+
+              <TextBlock Text="What a future version could check here (nothing can be changed in this version)"
+                         FontWeight="SemiBold" Margin="0,8,0,4" />
+              <ItemsControl ItemsSource="{Binding Assessments}">
+                <ItemsControl.ItemTemplate>
+                  <DataTemplate DataType="{x:Type vm:AssessmentViewModel}">
+                    <StackPanel Margin="0,0,0,6">
+                      <TextBlock><Run Text="{Binding Action, Mode=OneWay}" FontWeight="SemiBold" /><Run Text=" — " /><Run Text="{Binding Verdict, Mode=OneWay}" /></TextBlock>
+                      <ItemsControl ItemsSource="{Binding Reasons}" Margin="14,2,0,0">
+                        <ItemsControl.ItemTemplate>
+                          <DataTemplate>
+                            <TextBlock Text="{Binding StringFormat='• {0}'}" TextWrapping="Wrap" Foreground="{StaticResource MutedText}" />
+                          </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                      </ItemsControl>
+                    </StackPanel>
+                  </DataTemplate>
+                </ItemsControl.ItemTemplate>
+              </ItemsControl>
+            </StackPanel>
+          </Border>
+
+          <!-- Disk-level notices -->
+          <Border Style="{StaticResource Card}">
+            <StackPanel>
+              <TextBlock Text="Safety notes for this disk" Style="{StaticResource SectionTitle}" />
+              <TextBlock Text="No notes for this disk." Foreground="{StaticResource MutedText}">
+                <TextBlock.Style>
+                  <Style TargetType="TextBlock">
+                    <Setter Property="Visibility" Value="Collapsed" />
+                    <Style.Triggers>
+                      <DataTrigger Binding="{Binding Notices.Count}" Value="0">
+                        <Setter Property="Visibility" Value="Visible" />
+                      </DataTrigger>
+                    </Style.Triggers>
+                  </Style>
+                </TextBlock.Style>
+              </TextBlock>
+              <ItemsControl ItemsSource="{Binding Notices}">
+                <ItemsControl.ItemTemplate>
+                  <DataTemplate DataType="{x:Type vm:NoticeViewModel}">
+                    <StackPanel Margin="0,0,0,6">
+                      <TextBlock FontWeight="SemiBold" Foreground="{Binding Color}">
+                        <Run Text="{Binding Scope, Mode=OneWay}" /><Run Text=" · " /><Run Text="{Binding Severity, Mode=OneWay}" /><Run Text=": " /><Run Text="{Binding Title, Mode=OneWay}" />
+                      </TextBlock>
+                      <TextBlock Text="{Binding Detail}" TextWrapping="Wrap" />
+                    </StackPanel>
+                  </DataTemplate>
+                </ItemsControl.ItemTemplate>
+              </ItemsControl>
+              <TextBlock TextWrapping="Wrap" Foreground="{StaticResource MutedText}" FontSize="12" Margin="0,8,0,0"
+                         Text="About health: ShadowDisk shows the status Windows reports. That is not a bad-sector scan. A read-only surface scan and detailed drive-health counters are planned for a later version, with clear warnings, because scanning can stress a failing drive." />
+            </StackPanel>
+          </Border>
+        </StackPanel>
+      </ScrollViewer>
+    </Grid>
+  </DockPanel>
+</Window>

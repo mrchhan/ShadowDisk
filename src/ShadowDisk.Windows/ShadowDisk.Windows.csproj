@@ -1,0 +1,14 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <RootNamespace>ShadowDisk.Windows</RootNamespace>
+    <!-- Lets this Windows-only project also compile on Linux/macOS CI. -->
+    <EnableWindowsTargeting>true</EnableWindowsTargeting>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="System.Management" Version="10.0.0" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\ShadowDisk.Core\ShadowDisk.Core.csproj" />
+  </ItemGroup>
+</Project>

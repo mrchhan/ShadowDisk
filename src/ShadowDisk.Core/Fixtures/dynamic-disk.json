@@ -1,0 +1,17 @@
+// Legacy dynamic disk (LDM). Not supported: every change action must stay disabled.
+[
+  {
+    "Number": 3, "FriendlyName": "Demo Dynamic Disk 2TB", "SerialNumber": "DEMO-DYN-9001",
+    "SizeBytes": 2000398934016, "LogicalSectorSize": 512, "PhysicalSectorSize": 4096,
+    "Style": "Gpt", "Bus": "Sata", "IsBoot": false, "IsSystem": false, "IsOffline": false, "IsReadOnly": false,
+    "Health": "Healthy",
+    "Partitions": [
+      { "DiskNumber": 3, "PartitionNumber": 1, "OffsetBytes": 1048576, "SizeBytes": 1048576, "Kind": "LdmMetadata",
+        "GptType": "{5808c8aa-7e8f-42e0-85d2-e1e90434cfb3}", "IsBoot": false, "IsSystem": false, "IsActive": false, "IsHidden": true, "Volume": null },
+      { "DiskNumber": 3, "PartitionNumber": 2, "OffsetBytes": 2097152, "SizeBytes": 134217728, "Kind": "MicrosoftReserved",
+        "GptType": "{e3c9e316-0b5c-4db8-817d-f92df00215ae}", "IsBoot": false, "IsSystem": false, "IsActive": false, "IsHidden": true, "Volume": null },
+      { "DiskNumber": 3, "PartitionNumber": 3, "OffsetBytes": 136314880, "SizeBytes": 2000262619136, "Kind": "LdmData",
+        "GptType": "{af9b60a0-1431-4f62-bc68-3311714a69ad}", "IsBoot": false, "IsSystem": false, "IsActive": false, "IsHidden": true, "Volume": null }
+    ]
+  }
+]
