@@ -7,6 +7,7 @@ using ShadowDisk.Core.Inventory;
 using ShadowDisk.Core.Layout;
 using ShadowDisk.Core.Logging;
 using ShadowDisk.Core.Model;
+using ShadowDisk.Core.Planning;
 using ShadowDisk.Core.Reporting;
 using ShadowDisk.Core.Safety;
 using ShadowDisk.Windows;
@@ -29,6 +30,7 @@ public sealed class MainViewModel : ObservableObject
     private bool _isBusy;
     private string _statusText = "Starting…";
     private string? _bannerText;
+    private PlanViewModel? _plan;
 
     public MainViewModel()
     {
@@ -143,6 +145,7 @@ public sealed class MainViewModel : ObservableObject
                 _selectedRegion = value?.Region;
                 OnPropertyChanged(nameof(SelectedRegion));
             }
+            UpdatePlan();
         }
     }
 
@@ -157,8 +160,33 @@ public sealed class MainViewModel : ObservableObject
             {
                 _selectedRow = row;
                 OnPropertyChanged(nameof(SelectedRow));
+                UpdatePlan();
             }
         }
+    }
+
+    /// <summary>Planning panel for the selected partition or unallocated space. Preview only.</summary>
+    public PlanViewModel? Plan
+    {
+        get => _plan;
+        private set
+        {
+            _plan?.Cancel();
+            if (Set(ref _plan, value)) OnPropertyChanged(nameof(HasPlanPanel));
+        }
+    }
+
+    public bool HasPlanPanel => Plan is not null;
+
+    private void UpdatePlan()
+    {
+        if (SelectedDisk is null || SelectedRow is null)
+        {
+            Plan = null;
+            return;
+        }
+        IPartitionLimitsProvider limits = IsSimulated ? new EstimatedLimitsProvider() : new WindowsPartitionLimitsProvider();
+        Plan = new PlanViewModel(SelectedDisk.Layout, SelectedRow.Region, limits);
     }
 
     public async Task RefreshAsync()
@@ -224,7 +252,7 @@ public sealed class MainViewModel : ObservableObject
         if (dialog.ShowDialog() != true) return;
         try
         {
-            File.WriteAllText(dialog.FileName, ReportWriter.Write(_snapshot, AppServices.Version));
+            File.WriteAllText(dialog.FileName, ReportWriter.Write(_snapshot, AppServices.Version, Plan?.Result));
             AppServices.Log.Info("Report exported.");
             StatusText = "Report saved.";
         }

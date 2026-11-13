@@ -3,6 +3,7 @@ using System.Text;
 using ShadowDisk.Core.Layout;
 using ShadowDisk.Core.Mapping;
 using ShadowDisk.Core.Model;
+using ShadowDisk.Core.Planning;
 using ShadowDisk.Core.Safety;
 
 namespace ShadowDisk.Core.Reporting;
@@ -10,7 +11,7 @@ namespace ShadowDisk.Core.Reporting;
 /// <summary>Plain-text inventory report. Serial numbers are masked; file names and folder contents are never read.</summary>
 public static class ReportWriter
 {
-    public static string Write(InventorySnapshot snapshot, string appVersion)
+    public static string Write(InventorySnapshot snapshot, string appVersion, PlanResult? plan = null)
     {
         var sb = new StringBuilder();
         sb.AppendLine("SHADOWDISK — DISK INVENTORY REPORT");
@@ -61,6 +62,24 @@ public static class ReportWriter
             }
             sb.AppendLine();
         }
+        if (plan is not null) sb.Append(WritePlan(plan));
+        return sb.ToString();
+    }
+
+    public static string WritePlan(PlanResult plan)
+    {
+        var sb = new StringBuilder();
+        sb.AppendLine(new string('=', 72));
+        sb.AppendLine("PLANNED CHANGE — PREVIEW ONLY. NOTHING HAS BEEN APPLIED TO ANY DISK.");
+        sb.AppendLine($"  Plan    : {plan.Request.Kind} on disk {plan.Request.Region.Partition?.DiskNumber.ToString() ?? "(unallocated space)"}");
+        sb.AppendLine($"  Target  : {ByteSize.FormatWithExact(plan.Request.TargetSizeBytes)}");
+        sb.AppendLine($"  Limits  : {ByteSize.Format(plan.Limits.MinBytes)} – {ByteSize.Format(plan.Limits.MaxBytes)} ({plan.Limits.Source})");
+        sb.AppendLine($"  Result  : {(plan.IsValid ? "Passes all checks" : "Blocked")}");
+        sb.AppendLine($"  Summary : {plan.Summary}");
+        sb.AppendLine("  Checks:");
+        foreach (var c in plan.Checks) sb.AppendLine($"    [{c.Outcome}] {c.Text}");
+        sb.AppendLine("  Risks:");
+        foreach (var r in plan.Risks) sb.AppendLine($"    - {r}");
         return sb.ToString();
     }
 }

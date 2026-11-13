@@ -2,12 +2,12 @@
 
 Each stage ships only when the previous one is stable and tested.
 
-## Stage 1: Read-only inventory (v0.1, this release)
+## Stage 1: Read-only inventory (v0.1, done)
 - Disks, partitions, volumes, unallocated space; bar, pie and table views
 - Safety notices and "why this would be blocked" explanations
 - Report export, activity log, demo mode, installer
 
-## Stage 2: Planning with a simulated backend (v0.2)
+## Stage 2: Planning with a simulated backend (v0.2, this release)
 - Draft a change (shrink, extend, create volume) and see a **preview** layout next to the current one
 - Use Windows' own limits (`Get-PartitionSupportedSize`) for minimum and maximum sizes
 - Validation against alignment, MBR limits, protected partitions, BitLocker and health

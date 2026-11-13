@@ -41,6 +41,13 @@ truncates rather than rounding up, so the app never shows more space than exists
 | Disks | `root\Microsoft\Windows\Storage : MSFT_Disk` | No |
 | Partitions | `MSFT_Partition` | No |
 | Volumes | `MSFT_Volume` | No |
+| Size limits for plans | `MSFT_Partition.GetSupportedSize` (read-only analysis) | Sometimes; falls back to an estimate |
 | BitLocker | `root\CIMV2\Security\MicrosoftVolumeEncryption : Win32_EncryptableVolume` (+ read-only `GetLockStatus`) | Yes |
 
-Only `SELECT` queries and `GetLockStatus` are used. No method that changes a disk is called.
+Only `SELECT` queries and the read-only `GetLockStatus` and `GetSupportedSize` methods are used. No method that changes a disk is called.
+
+## Planning (v0.2)
+
+`ShadowDisk.Core.Planning` turns a request (shrink, extend, create) plus size limits into a
+`PlanResult`: pass/warn/fail checks, a proposed `DiskLayout` for the preview, a summary and the risks.
+It is pure calculation on copies of the layout and is covered by unit tests.

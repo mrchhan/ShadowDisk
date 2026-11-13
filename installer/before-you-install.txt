@@ -1,9 +1,11 @@
-ShadowDisk 0.1 — read-only disk and partition inspector
+ShadowDisk 0.2 — read-only disk and partition inspector with change planning
 
 What this version does
   - Shows your physical disks, partitions, volumes and unallocated space.
   - Shows used data, free space inside volumes and unallocated space as a bar, a pie chart or a table.
   - Shows the health status that Windows reports for each disk.
+  - Lets you PLAN a shrink, extend or new volume and see a preview of the result.
+    Plans are previews only: nothing is applied to any disk.
   - Exports a plain-text report (serial numbers are masked).
 
 What this version does NOT do

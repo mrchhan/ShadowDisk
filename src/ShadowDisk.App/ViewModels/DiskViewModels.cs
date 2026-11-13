@@ -153,7 +153,7 @@ public sealed class AssessmentViewModel(ActionAssessment a)
     };
 
     public string Verdict => a.PassesBasicChecks
-        ? "Passes basic checks. Windows decides the real limits; planning arrives in a later version."
+        ? "Passes basic checks. Use “Plan a change” above to preview it."
         : "Would not be offered:";
 
     public IReadOnlyList<string> Reasons => a.Reasons;

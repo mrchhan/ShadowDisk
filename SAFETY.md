@@ -28,9 +28,9 @@ will never claim otherwise.
    stress a failing drive.
 10. **Development never touches real disks.** Tests use simulated disks or disposable virtual disks.
 
-## Version 0.1
+## Versions 0.1 and 0.2
 
-Version 0.1 contains **no code that writes to disks**. The storage interface it uses
+Version 0.2 adds change *planning*, which only produces previews. It still contains **no code that writes to disks**. The storage interface it uses
 (`IStorageInventory`) has no write methods.
 
 ## Reporting a problem

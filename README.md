@@ -7,10 +7,10 @@
 ShadowDisk shows what is really on your drives: physical disks, partitions, volumes, used data,
 free space and unallocated space. You can view the layout as a bar, a pie/donut chart or a table.
 
-> **Version 0.1 is read-only.** It never resizes, creates, deletes, formats or writes to any disk.
+> **Version 0.2 is read-only.** It never resizes, creates, deletes, formats or writes to any disk.
 > Changes will be added later, one carefully tested operation at a time. See [SAFETY.md](SAFETY.md).
 
-## Features (v0.1)
+## Features (v0.2)
 
 - Every physical disk with its real identity: model, size in exact bytes, GPT/MBR, connection type
   (NVMe, SATA, USB…) and sector sizes
@@ -23,6 +23,9 @@ free space and unallocated space. You can view the layout as a bar, a pie/donut 
   uninitialized disks are detected and explained
 - "Why can't I resize this?" explanations, so you can see which future actions Windows would
   allow and why others would be blocked
+- **Plan a change (preview only):** shrink a volume, extend it, or create a new volume in
+  unallocated space, and compare the current and proposed layouts. Size limits come from
+  Windows where possible. Every check and risk is listed, and nothing is applied
 - The **health status Windows reports** for each disk, clearly labelled as *not* a bad-sector scan
 - **Demo mode** with simulated disks, to explore safely or to make screenshots
 - Plain-text report export with masked serial numbers

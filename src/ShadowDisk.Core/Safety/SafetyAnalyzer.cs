@@ -23,6 +23,9 @@ public static class SafetyAnalyzer
 
     private static readonly string[] ResizableFileSystems = ["NTFS", "REFS"];
 
+    /// <summary>Free space smaller than this is not worth extending into or creating a volume in.</summary>
+    public const long MinimumUsefulSpace = 16 * ByteSize.MiB;
+
     public static IReadOnlyList<Notice> AnalyzeDisk(DiskLayout layout)
     {
         var d = layout.Disk;
@@ -138,6 +141,8 @@ public static class SafetyAnalyzer
         var next = index >= 0 ? regions.Skip(index + 1).FirstOrDefault(r => r.Kind != RegionKind.Gap) : null;
         if (next is not { Kind: RegionKind.Unallocated })
             extend.Add("Windows can only extend a volume into unallocated space directly after it on the same disk. There is none.");
+        else if (next.SizeBytes < MinimumUsefulSpace)
+            extend.Add($"Only {ByteSize.Format(next.SizeBytes)} of unallocated space follows this volume, too little to be worth extending into.");
         result.Add(new ActionAssessment(PlannedAction.ExtendVolume, extend.Count == 0, extend));
 
         return result;
@@ -148,6 +153,8 @@ public static class SafetyAnalyzer
         var reasons = new List<string>(CommonBlockers(layout.Disk));
         if (region.Kind != RegionKind.Unallocated)
             reasons.Add("This is not unallocated space.");
+        else if (region.SizeBytes < MinimumUsefulSpace)
+            reasons.Add($"This unallocated space ({ByteSize.Format(region.SizeBytes)}) is too small for a new volume (minimum {ByteSize.Format(MinimumUsefulSpace)}).");
         if (layout.Disk.Style == PartitionStyle.Mbr)
         {
             var primaries = layout.Disk.Partitions.Count(p => p.Kind != PartitionKind.Logical);

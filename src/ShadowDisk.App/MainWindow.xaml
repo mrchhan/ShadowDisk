@@ -199,6 +199,115 @@
             </StackPanel>
           </Border>
 
+          <!-- Plan a change: PREVIEW ONLY. Nothing in this card can change a disk. -->
+          <Border Style="{StaticResource Card}" BorderBrush="#F59E0B" BorderThickness="1.5"
+                  DataContext="{Binding DataContext.Plan, RelativeSource={RelativeSource AncestorType=Window}}"
+                  Visibility="{Binding DataContext.HasPlanPanel, RelativeSource={RelativeSource AncestorType=Window}, Converter={StaticResource BoolToVis}}">
+            <StackPanel>
+              <DockPanel Margin="0,0,0,8">
+                <Border DockPanel.Dock="Right" Background="#FEF3C7" CornerRadius="4" Padding="8,3" VerticalAlignment="Center">
+                  <TextBlock Text="PREVIEW ONLY — nothing is applied to your disk" Foreground="#92400E" FontWeight="SemiBold" FontSize="12" />
+                </Border>
+                <TextBlock Text="Plan a change" Style="{StaticResource SectionTitle}" Margin="0" VerticalAlignment="Center" />
+              </DockPanel>
+
+              <TextBlock Text="{Binding NothingToPlanText}" TextWrapping="Wrap" Foreground="{StaticResource MutedText}"
+                         Visibility="{Binding CanPlan, Converter={StaticResource InverseBoolToVis}}" />
+
+              <StackPanel Visibility="{Binding CanPlan, Converter={StaticResource BoolToVis}}">
+                <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
+                  <TextBlock Text="Change:" VerticalAlignment="Center" Margin="0,0,8,0" />
+                  <ComboBox ItemsSource="{Binding Options}" SelectedItem="{Binding SelectedOption}" DisplayMemberPath="Label"
+                            Width="260" AutomationProperties.Name="Planned change" />
+                  <TextBlock Text="Choose a change to preview" Foreground="{StaticResource MutedText}" VerticalAlignment="Center" Margin="10,0,0,0"
+                             Visibility="{Binding HasOption, Converter={StaticResource InverseBoolToVis}}" />
+                  <TextBlock Text="Asking Windows for the size limits… this can take a minute on large drives." Foreground="{StaticResource MutedText}"
+                             VerticalAlignment="Center" Margin="10,0,0,0"
+                             Visibility="{Binding IsLoadingLimits, Converter={StaticResource BoolToVis}}" />
+                </StackPanel>
+
+                <StackPanel Visibility="{Binding HasOption, Converter={StaticResource BoolToVis}}">
+                  <TextBlock Text="{Binding LimitsText}" FontWeight="SemiBold" />
+                  <TextBlock Text="{Binding LimitsNote}" Foreground="{StaticResource MutedText}" FontSize="12" TextWrapping="Wrap" Margin="0,2,0,8" />
+
+                  <StackPanel Visibility="{Binding HasUsableLimits, Converter={StaticResource BoolToVis}}">
+                    <StackPanel Orientation="Horizontal" Margin="0,0,0,6">
+                      <TextBlock Text="New size (GiB):" VerticalAlignment="Center" Margin="0,0,8,0" />
+                      <TextBox Text="{Binding SizeText, UpdateSourceTrigger=PropertyChanged, Delay=400}" Width="110" Padding="4,3"
+                               AutomationProperties.Name="New size in GiB" />
+                      <Button Content="Minimum" Command="{Binding UseMinimumCommand}" Margin="8,0,6,0" />
+                      <Button Content="Maximum" Command="{Binding UseMaximumCommand}" />
+                    </StackPanel>
+                    <Slider Minimum="{Binding SliderMinimum}" Maximum="{Binding SliderMaximum}" Value="{Binding SliderValue}"
+                            SmallChange="1" LargeChange="1024" IsMoveToPointEnabled="True" Margin="0,0,0,10"
+                            AutomationProperties.Name="New size slider" />
+                  </StackPanel>
+
+                  <TextBlock Text="{Binding VerdictText}" Foreground="{Binding VerdictColor}" FontWeight="SemiBold" TextWrapping="Wrap" />
+                  <TextBlock Text="{Binding Summary}" TextWrapping="Wrap" Margin="0,4,0,10" />
+
+                  <!-- Current vs proposed -->
+                  <StackPanel Visibility="{Binding HasPreview, Converter={StaticResource BoolToVis}}" Margin="0,0,0,10">
+                    <!-- Pie view: current and proposed side by side -->
+                    <Grid Visibility="{Binding DataContext.ShowPie, RelativeSource={RelativeSource AncestorType=Window}, Converter={StaticResource BoolToVis}}">
+                      <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="16" />
+                        <ColumnDefinition Width="*" />
+                      </Grid.ColumnDefinitions>
+                      <StackPanel>
+                        <TextBlock Text="Current layout" FontWeight="SemiBold" Margin="0,0,0,4" />
+                        <c:DiskPieView Layout="{Binding CurrentLayout}" IsSelectable="False" HorizontalAlignment="Center"
+                                       SelectedRegion="{Binding DataContext.SelectedRegion, RelativeSource={RelativeSource AncestorType=Window}, Mode=OneWay}" />
+                      </StackPanel>
+                      <Border Grid.Column="2" BorderBrush="#F59E0B" BorderThickness="2" CornerRadius="3" Padding="6" Background="#FFFBEB">
+                        <StackPanel>
+                          <TextBlock Text="Proposed — PREVIEW ONLY, NOT APPLIED" FontWeight="Bold" Foreground="#B45309" Margin="0,0,0,4" />
+                          <c:DiskPieView Layout="{Binding ProposedLayout}" SelectedRegion="{Binding ProposedRegion, Mode=OneWay}" IsSelectable="False"
+                                         HorizontalAlignment="Center" AutomationProperties.HelpText="Proposed layout preview. Nothing has been changed." />
+                        </StackPanel>
+                      </Border>
+                    </Grid>
+
+                    <!-- Bar and table views: current above proposed -->
+                    <StackPanel Visibility="{Binding DataContext.ShowPie, RelativeSource={RelativeSource AncestorType=Window}, Converter={StaticResource InverseBoolToVis}}">
+                    <TextBlock Text="Current layout" FontWeight="SemiBold" Margin="0,0,0,4" />
+                    <c:DiskBarView Layout="{Binding CurrentLayout}" IsSelectable="False"
+                                   SelectedRegion="{Binding DataContext.SelectedRegion, RelativeSource={RelativeSource AncestorType=Window}, Mode=OneWay}" />
+                    <TextBlock Text="Proposed layout — PREVIEW ONLY, NOT APPLIED" FontWeight="Bold" Foreground="#B45309" Margin="0,8,0,4" />
+                    <Border BorderBrush="#F59E0B" BorderThickness="2" CornerRadius="3" Padding="4" Background="#FFFBEB">
+                      <c:DiskBarView Layout="{Binding ProposedLayout}" SelectedRegion="{Binding ProposedRegion, Mode=OneWay}" IsSelectable="False"
+                                     AutomationProperties.HelpText="Proposed layout preview. Nothing has been changed." />
+                    </Border>
+                    </StackPanel>
+                  </StackPanel>
+
+                  <TextBlock Text="Checks" FontWeight="SemiBold" Margin="0,0,0,4" Visibility="{Binding HasResult, Converter={StaticResource BoolToVis}}" />
+                  <ItemsControl ItemsSource="{Binding Checks}" Margin="0,0,0,8">
+                    <ItemsControl.ItemTemplate>
+                      <DataTemplate DataType="{x:Type vm:PlanCheckViewModel}">
+                        <DockPanel Margin="0,1">
+                          <TextBlock Text="{Binding Symbol}" Foreground="{Binding Color}" FontWeight="Bold" Width="18" />
+                          <TextBlock Text="{Binding Text}" TextWrapping="Wrap" />
+                        </DockPanel>
+                      </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                  </ItemsControl>
+
+                  <TextBlock Text="Before any real change (planned for a later version)" FontWeight="SemiBold" Margin="0,0,0,4"
+                             Visibility="{Binding HasResult, Converter={StaticResource BoolToVis}}" />
+                  <ItemsControl ItemsSource="{Binding Risks}">
+                    <ItemsControl.ItemTemplate>
+                      <DataTemplate>
+                        <TextBlock Text="{Binding StringFormat='• {0}'}" TextWrapping="Wrap" Foreground="{StaticResource MutedText}" Margin="0,1" />
+                      </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                  </ItemsControl>
+                </StackPanel>
+              </StackPanel>
+            </StackPanel>
+          </Border>
+
           <!-- Selected region details -->
           <Border Style="{StaticResource Card}"
                   DataContext="{Binding DataContext.SelectedRow, RelativeSource={RelativeSource AncestorType=Window}}">

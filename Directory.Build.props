@@ -6,7 +6,7 @@
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
     <!-- Package security advisories stay visible as warnings without breaking the build. -->
     <WarningsNotAsErrors>$(WarningsNotAsErrors);NU1900;NU1901;NU1902;NU1903;NU1904</WarningsNotAsErrors>
-    <Version>0.1.0</Version>
+    <Version>0.2.0</Version>
     <Company>AIShadow</Company>
     <Product>ShadowDisk</Product>
     <Copyright>Copyright (c) 2026 Hassan Malik</Copyright>

@@ -23,6 +23,16 @@ public abstract class LayoutViewBase : FrameworkElement
         nameof(SelectedRegion), typeof(DiskRegion), typeof(LayoutViewBase),
         new FrameworkPropertyMetadata(null, FrameworkPropertyMetadataOptions.AffectsRender | FrameworkPropertyMetadataOptions.BindsTwoWayByDefault));
 
+    public static readonly DependencyProperty IsSelectableProperty = DependencyProperty.Register(
+        nameof(IsSelectable), typeof(bool), typeof(LayoutViewBase), new PropertyMetadata(true));
+
+    /// <summary>When false, the view only displays the layout (used for the preview bars).</summary>
+    public bool IsSelectable
+    {
+        get => (bool)GetValue(IsSelectableProperty);
+        set => SetValue(IsSelectableProperty, value);
+    }
+
     private readonly ToolTip _toolTip = new() { Placement = System.Windows.Controls.Primitives.PlacementMode.Mouse };
 
     protected LayoutViewBase()
@@ -60,6 +70,7 @@ public abstract class LayoutViewBase : FrameworkElement
     protected override void OnMouseLeftButtonDown(MouseButtonEventArgs e)
     {
         base.OnMouseLeftButtonDown(e);
+        if (!IsSelectable) return;
         Focus();
         if (HitTestRegion(e.GetPosition(this)) is { } region) SelectedRegion = region;
     }
@@ -81,7 +92,7 @@ public abstract class LayoutViewBase : FrameworkElement
     protected override void OnKeyDown(KeyEventArgs e)
     {
         base.OnKeyDown(e);
-        if (Layout is null) return;
+        if (Layout is null || !IsSelectable) return;
         var regions = Layout.Regions.Where(r => r.Kind != RegionKind.Gap).ToList();
         if (regions.Count == 0) return;
         var index = SelectedRegion is null ? -1 : regions.FindIndex(r => ReferenceEquals(r, SelectedRegion));
