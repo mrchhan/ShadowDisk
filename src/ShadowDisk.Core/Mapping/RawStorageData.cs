@@ -17,7 +17,9 @@ public sealed record RawDisk(
     bool IsSystem,
     bool IsOffline,
     bool IsReadOnly,
-    ushort HealthStatus);    // 0 Healthy, 1 Warning, 2 Unhealthy, 5 Unknown
+    ushort HealthStatus,     // 0 Healthy, 1 Warning, 2 Unhealthy, 5 Unknown
+    string? Location = null,
+    string? UniqueId = null);
 
 public sealed record RawPartition(
     uint DiskNumber,

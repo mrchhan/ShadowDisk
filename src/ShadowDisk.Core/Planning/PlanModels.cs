@@ -40,7 +40,9 @@ public sealed record PlanResult(
     DiskLayout? ProposedLayout,
     DiskRegion? ProposedRegion,
     string Summary,
-    IReadOnlyList<string> Risks)
+    IReadOnlyList<string> Risks,
+    long ChangedOffsetBytes = 0,    // Start of the disk area that changes (freed, added or newly used)
+    long ChangedLengthBytes = 0)    // Its length; 0 when the plan is blocked
 {
     public bool IsValid => Checks.All(c => c.Outcome != CheckOutcome.Failed);
 }

@@ -19,7 +19,8 @@ public sealed record ActionAssessment(PlannedAction Action, bool PassesBasicChec
 public static class SafetyAnalyzer
 {
     public const string ReadOnlyStatement =
-        "This version only reads information. It does not change, format, resize or write to any disk.";
+        "Physical disks are only read: ShadowDisk does not change, format, resize or write to them. " +
+        "Real changes are limited to ShadowDisk practice disks (virtual disk files), and each one needs a final confirmation.";
 
     private static readonly string[] ResizableFileSystems = ["NTFS", "REFS"];
 
@@ -139,8 +140,11 @@ public static class SafetyAnalyzer
         var regions = layout.Regions.ToList();
         var index = regions.FindIndex(r => r.Partition == p);
         var next = index >= 0 ? regions.Skip(index + 1).FirstOrDefault(r => r.Kind != RegionKind.Gap) : null;
-        if (next is not { Kind: RegionKind.Unallocated })
-            extend.Add("Windows can only extend a volume into unallocated space directly after it on the same disk. There is none.");
+        if (next is { Partition: { } blocker })
+            extend.Add($"{blocker.DisplayName} sits directly after {p.DisplayName}. Windows can only extend a volume into unallocated space " +
+                       $"directly after it, so {p.DisplayName} can't grow unless partitions are moved. Moving partitions is planned as a separate, later feature.");
+        else if (next is not { Kind: RegionKind.Unallocated })
+            extend.Add($"There is no unallocated space directly after {p.DisplayName}, and Windows can only extend a volume into space directly after it.");
         else if (next.SizeBytes < MinimumUsefulSpace)
             extend.Add($"Only {ByteSize.Format(next.SizeBytes)} of unallocated space follows this volume, too little to be worth extending into.");
         result.Add(new ActionAssessment(PlannedAction.ExtendVolume, extend.Count == 0, extend));

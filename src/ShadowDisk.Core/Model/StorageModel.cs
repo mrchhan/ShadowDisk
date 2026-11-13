@@ -91,7 +91,9 @@ public sealed record PhysicalDisk(
     bool IsOffline,
     bool IsReadOnly,
     ReportedHealth Health,
-    IReadOnlyList<Partition> Partitions)
+    IReadOnlyList<Partition> Partitions,
+    string? Location = null,   // For a virtual disk: the path of its file. Used to recognise practice disks.
+    string? UniqueId = null)   // Windows' identifier for the disk; used to make sure an operation targets the same disk.
 {
     public bool IsRemovableBus => Bus is BusType.Usb or BusType.SdCard or BusType.Mmc;
 

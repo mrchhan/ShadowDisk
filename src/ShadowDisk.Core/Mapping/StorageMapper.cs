@@ -126,7 +126,9 @@ public static class StorageMapper
                 IsOffline: d.IsOffline,
                 IsReadOnly: d.IsReadOnly,
                 Health: MapHealth(d.HealthStatus),
-                Partitions: mapped));
+                Partitions: mapped,
+                Location: string.IsNullOrWhiteSpace(d.Location) ? null : d.Location.Trim(),
+                UniqueId: string.IsNullOrWhiteSpace(d.UniqueId) ? null : d.UniqueId.Trim()));
         }
         return result;
     }

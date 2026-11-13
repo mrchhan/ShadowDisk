@@ -2,6 +2,8 @@ using System.Globalization;
 using ShadowDisk.App.Services;
 using ShadowDisk.Core;
 using ShadowDisk.Core.Layout;
+using ShadowDisk.Core.Model;
+using ShadowDisk.Core.Operations;
 using ShadowDisk.Core.Planning;
 using ShadowDisk.Core.Safety;
 
@@ -35,6 +37,9 @@ public sealed class PlanViewModel : ObservableObject
     private readonly DiskLayout _layout;
     private readonly DiskRegion _region;
     private readonly IPartitionLimitsProvider _limitsProvider;
+    private readonly OperationPolicy _policy;
+    private readonly bool _isElevated;
+    private readonly Func<CreateVolumeOrder, PlanResult, Task>? _applyCreateVolume;
     private CancellationTokenSource? _limitsCts;
 
     private PlanOption? _selectedOption;
@@ -44,11 +49,18 @@ public sealed class PlanViewModel : ObservableObject
     private string _sizeText = "";
     private PlanResult? _result;
 
-    public PlanViewModel(DiskLayout layout, DiskRegion region, IPartitionLimitsProvider limitsProvider)
+    public PlanViewModel(DiskLayout layout, DiskRegion region, IPartitionLimitsProvider limitsProvider,
+        OperationPolicy policy, bool isElevated, bool isSimulated, Func<CreateVolumeOrder, PlanResult, Task>? applyCreateVolume)
     {
         _layout = layout;
         _region = region;
         _limitsProvider = limitsProvider;
+        _policy = policy;
+        _isElevated = isElevated;
+        _isSimulated = isSimulated;
+        _applyCreateVolume = applyCreateVolume;
+        ApplyCommand = new RelayCommand(() => _ = ApplyAsync(), () => CanApply && !_isApplying);
+        HandleDragCommand = new DelegateCommand<long>(DragTo, _ => _limits?.IsUsable == true);
 
         var options = new List<PlanOption>();
         if (region.Partition is { } p)
@@ -72,9 +84,75 @@ public sealed class PlanViewModel : ObservableObject
     public DiskLayout CurrentLayout => _layout;
     public IReadOnlyList<PlanOption> Options { get; }
     public bool CanPlan => Options.Count > 0;
+
+    /// <summary>
+    /// For a data volume that can't be extended: the reason in plain words, e.g.
+    /// "Recovery sits directly after C:…". Empty when extending is possible or not relevant.
+    /// </summary>
+    public string ExtendBlockedText
+    {
+        get
+        {
+            if (_region.Partition is not { Volume: not null } p || p.Kind is not (PartitionKind.Basic or PartitionKind.Logical))
+                return "";
+            var extend = SafetyAnalyzer.AssessPartition(_layout, p).Single(a => a.Action == PlannedAction.ExtendVolume);
+            return extend.PassesBasicChecks ? "" : $"Why can't {p.DisplayName} be extended? " + string.Join(" ", extend.Reasons);
+        }
+    }
     public string NothingToPlanText => _region.Partition is null
         ? "No change can be planned in this space. See the reasons under “What a future version could check here”."
         : $"No change can be planned for {_region.Partition.DisplayName}. See the reasons under “What a future version could check here”.";
+
+    private readonly bool _isSimulated;
+    private bool _isApplying;
+
+    public RelayCommand ApplyCommand { get; }
+
+    /// <summary>True only for a valid "create volume" plan on a ShadowDisk practice disk, run as administrator.</summary>
+    public bool CanApply => ApplyBlockedReason is null;
+    public bool ShowApplyArea => Result?.IsValid == true;
+
+    /// <summary>Why the real change can't be made from here, or null if it can.</summary>
+    public string? ApplyBlockedReason
+    {
+        get
+        {
+            if (Result is not { IsValid: true } r) return "The plan must pass its checks first.";
+            if (_isSimulated) return "These are simulated demo disks. Switch the source to “This PC” and use a practice disk.";
+            var notAllowed = _policy.WhyNotAllowed(_layout.Disk);
+            if (notAllowed.Count > 0) return notAllowed[0];
+            if (r.Request.Kind != PlanKind.CreateVolume)
+                return "In this version, only “Create a new volume” can be applied for real. Extend and shrink come next, after more testing.";
+            if (!_isElevated) return "Real changes need administrator rights. Use “Restart as administrator”.";
+            if (_applyCreateVolume is null) return "Applying is not available.";
+            return null;
+        }
+    }
+
+    /// <summary>Called while the preview's handle is dragged. Only changes the planned size.</summary>
+    public DelegateCommand<long> HandleDragCommand { get; }
+
+    /// <summary>Where the planned partition starts: the volume itself, or the aligned start of the free space.</summary>
+    private long PlanStartOffset => SelectedOption?.Kind == PlanKind.CreateVolume
+        ? PlanLimits.ForNewVolume(_layout, _region).Offset
+        : _region.Partition?.OffsetBytes ?? _region.OffsetBytes;
+
+    // The space the plan changes, outlined on both bars. For a shrink this is the end of the
+    // volume being released; for an extend, the space added; for a new volume, the volume itself.
+    public long HighlightStart => Result?.ChangedOffsetBytes ?? 0;
+    public long HighlightLength => Result?.IsValid == true ? Result.ChangedLengthBytes : 0;
+
+    /// <summary>The drag handle sits at the planned end of the volume (preview bar only).</summary>
+    public long HandleOffset => Result is { IsValid: true, ProposedRegion: { } r } ? r.EndBytes : -1;
+
+    public string ExplainChangeText => SelectedOption?.Kind switch
+    {
+        PlanKind.ShrinkVolume => "The dashed orange box is the free space that would be released from the end of the volume. " +
+                                 "Your data (dark blue) stays on the volume; if any files sit in that area, Windows moves them first.",
+        PlanKind.ExtendVolume => "The dashed orange box is the unallocated space that would be added to the volume. Existing data is not moved.",
+        PlanKind.CreateVolume => "The dashed orange box is the new volume. Only unallocated space is used; no existing partition is touched.",
+        _ => "",
+    };
 
     public RelayCommand UseMinimumCommand { get; }
     public RelayCommand UseMaximumCommand { get; }
@@ -151,6 +229,13 @@ public sealed class PlanViewModel : ObservableObject
             OnPropertyChanged(nameof(HasPreview));
             OnPropertyChanged(nameof(VerdictText));
             OnPropertyChanged(nameof(VerdictColor));
+            OnPropertyChanged(nameof(HighlightStart));
+            OnPropertyChanged(nameof(HighlightLength));
+            OnPropertyChanged(nameof(HandleOffset));
+            OnPropertyChanged(nameof(ExplainChangeText));
+            OnPropertyChanged(nameof(CanApply));
+            OnPropertyChanged(nameof(ShowApplyArea));
+            OnPropertyChanged(nameof(ApplyBlockedReason));
         }
     }
 
@@ -251,4 +336,32 @@ public sealed class PlanViewModel : ObservableObject
     }
 
     public void Cancel() => _limitsCts?.Cancel();
+
+    private void DragTo(long endOffset)
+    {
+        if (_limits is not { IsUsable: true } limits) return;
+        var size = PlanLimits.AlignDown(endOffset - PlanStartOffset);
+        TargetBytes = Math.Clamp(size, limits.MinBytes, limits.MaxBytes);
+    }
+
+    private async Task ApplyAsync()
+    {
+        if (!CanApply || Result is not { } plan || plan.ProposedRegion?.Partition is not { } created || _applyCreateVolume is null) return;
+        var order = new CreateVolumeOrder(
+            DiskNumber: _layout.Disk.Number,
+            DiskUniqueId: _layout.Disk.UniqueId,
+            LayoutFingerprint: LayoutFingerprint.Of(_layout.Disk),
+            OffsetBytes: created.OffsetBytes,
+            SizeBytes: created.SizeBytes,
+            VolumeLabel: "Practice");
+        _isApplying = true;
+        try
+        {
+            await _applyCreateVolume(order, plan);
+        }
+        finally
+        {
+            _isApplying = false;
+        }
+    }
 }

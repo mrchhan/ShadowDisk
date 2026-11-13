@@ -8,11 +8,16 @@ namespace ShadowDisk.App.ViewModels;
 
 public sealed class DiskItemViewModel
 {
-    public DiskItemViewModel(PhysicalDisk disk)
+    public DiskItemViewModel(PhysicalDisk disk, bool isPractice = false)
     {
         Disk = disk;
+        IsPractice = isPractice;
         Layout = DiskLayoutBuilder.Build(disk);
-        Notices = SafetyAnalyzer.AnalyzeDisk(Layout).Select(n => new NoticeViewModel(n)).ToList();
+        var notices = SafetyAnalyzer.AnalyzeDisk(Layout).Select(n => new NoticeViewModel(n)).ToList();
+        if (isPractice)
+            notices.Insert(0, new NoticeViewModel(new Notice(NoticeSeverity.Info, "ShadowDisk practice disk",
+                "A virtual disk file created by ShadowDisk for safe testing. Real changes are allowed here. Remove it with “Remove practice disks”.")));
+        Notices = notices;
         Rows = Layout.Regions
             .Where(r => r.Kind != RegionKind.Gap)
             .Select(r => new RegionRowViewModel(Layout, r))
@@ -20,6 +25,7 @@ public sealed class DiskItemViewModel
     }
 
     public PhysicalDisk Disk { get; }
+    public bool IsPractice { get; }
     public DiskLayout Layout { get; }
     public IReadOnlyList<NoticeViewModel> Notices { get; }
     public IReadOnlyList<RegionRowViewModel> Rows { get; }
@@ -28,6 +34,7 @@ public sealed class DiskItemViewModel
     public string Subtitle => $"{ByteSize.Format(Disk.SizeBytes)} · {VisualSegmentBuilder.StyleText(Disk.Style)} · {BusText(Disk.Bus)}";
     public string Badges => string.Join("  ", new[]
     {
+        IsPractice ? "Practice disk" : null,
         Disk.IsSystem || Disk.IsBoot ? "Windows" : null,
         Disk.IsRemovableBus ? "Removable" : null,
         Disk.IsDynamic ? "Dynamic (unsupported)" : null,

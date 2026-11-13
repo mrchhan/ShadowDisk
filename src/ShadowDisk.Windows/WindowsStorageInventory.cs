@@ -32,7 +32,7 @@ public sealed class WindowsStorageInventory : IStorageInventory
 
         var disks = Query(scope,
             "SELECT Number, FriendlyName, SerialNumber, Size, LogicalSectorSize, PhysicalSectorSize, PartitionStyle, " +
-            "BusType, IsBoot, IsSystem, IsOffline, IsReadOnly, HealthStatus FROM MSFT_Disk",
+            "BusType, IsBoot, IsSystem, IsOffline, IsReadOnly, HealthStatus, Location, UniqueId FROM MSFT_Disk",
             o => new RawDisk(
                 Get<uint>(o, "Number"),
                 Get<string>(o, "FriendlyName"),
@@ -46,7 +46,9 @@ public sealed class WindowsStorageInventory : IStorageInventory
                 Get<bool>(o, "IsSystem"),
                 Get<bool>(o, "IsOffline"),
                 Get<bool>(o, "IsReadOnly"),
-                Get<ushort>(o, "HealthStatus", 5)), ct);
+                Get<ushort>(o, "HealthStatus", 5),
+                Get<string>(o, "Location"),
+                Get<string>(o, "UniqueId")), ct);
 
         var partitions = Query(scope,
             "SELECT DiskNumber, PartitionNumber, Offset, Size, GptType, MbrType, IsBoot, IsSystem, IsActive, IsHidden, AccessPaths FROM MSFT_Partition",

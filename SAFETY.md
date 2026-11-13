@@ -28,6 +28,12 @@ will never claim otherwise.
    stress a failing drive.
 10. **Development never touches real disks.** Tests use simulated disks or disposable virtual disks.
 
+## Stage 3 (in progress)
+
+Real changes are enabled **only on ShadowDisk practice disks** (virtual disk files ShadowDisk
+creates). Physical disks stay read-only. Each operation is documented in
+[docs/OPERATIONS.md](docs/OPERATIONS.md) before it is enabled.
+
 ## Versions 0.1 and 0.2
 
 Version 0.2 adds change *planning*, which only produces previews. It still contains **no code that writes to disks**. The storage interface it uses

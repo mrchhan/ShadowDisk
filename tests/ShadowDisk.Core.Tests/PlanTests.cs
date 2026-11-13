@@ -239,6 +239,39 @@ public class PlanTests
     }
 
     [Fact]
+    public void Plan_reports_exactly_which_space_changes()
+    {
+        var layout = Load("desktop-hdd-mbr");
+        var d = RegionOf(layout, "D").Partition!;
+        var shrink = Plan(layout, PlanKind.ShrinkVolume, RegionOf(layout, "D"), 350 * GiB);
+        Assert.Equal(d.OffsetBytes + 350 * GiB, shrink.ChangedOffsetBytes);   // released at the END of D:
+        Assert.Equal(50 * GiB, shrink.ChangedLengthBytes);
+
+        var free = layout.Regions.Single(r => r.Kind == RegionKind.Unallocated);
+        var create = Plan(layout, PlanKind.CreateVolume, free, 10 * GiB);
+        Assert.Equal(create.ProposedRegion!.OffsetBytes, create.ChangedOffsetBytes);
+        Assert.Equal(10 * GiB, create.ChangedLengthBytes);
+
+        var blocked = Plan(layout, PlanKind.ShrinkVolume, RegionOf(layout, "D"), GiB);
+        Assert.Equal(0, blocked.ChangedLengthBytes);
+    }
+
+    [Fact]
+    public void Extend_reason_names_the_partition_in_the_way()
+    {
+        // Like the real test PC: Recovery sits between C: and the next volume.
+        var m = MiB;
+        var disk = LayoutTests.Disk(100 * GiB, PartitionStyle.Mbr,
+            LayoutTests.Part(1, m, 50 * GiB, v: LayoutTests.Ntfs(50 * GiB, 10 * GiB, "C")),
+            LayoutTests.Part(2, m + 50 * GiB, 682 * m, PartitionKind.Recovery),
+            LayoutTests.Part(3, 51 * GiB, 40 * GiB, v: LayoutTests.Ntfs(40 * GiB, 30 * GiB, "E")));
+        var layout = DiskLayoutBuilder.Build(disk);
+        var extend = Safety.SafetyAnalyzer.AssessPartition(layout, disk.Partitions[0]).Single(a => a.Action == Safety.PlannedAction.ExtendVolume);
+        Assert.False(extend.PassesBasicChecks);
+        Assert.Contains(extend.Reasons, r => r.Contains("Recovery sits directly after C:") && r.Contains("moved"));
+    }
+
+    [Fact]
     public void Planning_never_modifies_the_current_layout()
     {
         var layout = Load("desktop-hdd-mbr");

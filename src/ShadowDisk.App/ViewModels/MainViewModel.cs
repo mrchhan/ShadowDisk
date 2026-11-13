@@ -7,6 +7,7 @@ using ShadowDisk.Core.Inventory;
 using ShadowDisk.Core.Layout;
 using ShadowDisk.Core.Logging;
 using ShadowDisk.Core.Model;
+using ShadowDisk.Core.Operations;
 using ShadowDisk.Core.Planning;
 using ShadowDisk.Core.Reporting;
 using ShadowDisk.Core.Safety;
@@ -20,6 +21,8 @@ public sealed class MainViewModel : ObservableObject
     public const string SourceDemo = "Demo disks (simulated)";
 
     private readonly UserSettings _settings = UserSettings.Load();
+    private readonly OperationPolicy _policy = PracticeDiskService.Policy;
+    private readonly PracticeDiskService _practice = new();
     private CancellationTokenSource? _refreshCts;
     private InventorySnapshot? _snapshot;
     private DiskItemViewModel? _selectedDisk;
@@ -43,6 +46,8 @@ public sealed class MainViewModel : ObservableObject
         OpenDiskManagementCommand = new RelayCommand(OpenDiskManagement);
         RestartElevatedCommand = new RelayCommand(RestartElevated, () => !IsElevated);
         OpenLogFolderCommand = new RelayCommand(OpenLogFolder);
+        CreatePracticeDiskCommand = new RelayCommand(() => _ = CreatePracticeDiskAsync(), () => !IsBusy);
+        RemovePracticeDisksCommand = new RelayCommand(() => _ = RemovePracticeDisksAsync(), () => !IsBusy);
 
         foreach (var e in AppServices.Log.Entries) LogEntries.Add(e);
         AppServices.Log.EntryAdded += e => Application.Current?.Dispatcher.InvokeAsync(() => LogEntries.Add(e));
@@ -64,6 +69,8 @@ public sealed class MainViewModel : ObservableObject
     public RelayCommand OpenDiskManagementCommand { get; }
     public RelayCommand RestartElevatedCommand { get; }
     public RelayCommand OpenLogFolderCommand { get; }
+    public RelayCommand CreatePracticeDiskCommand { get; }
+    public RelayCommand RemovePracticeDisksCommand { get; }
 
     public bool IsSimulated => _snapshot?.IsSimulated ?? Source == SourceDemo;
 
@@ -186,7 +193,8 @@ public sealed class MainViewModel : ObservableObject
             return;
         }
         IPartitionLimitsProvider limits = IsSimulated ? new EstimatedLimitsProvider() : new WindowsPartitionLimitsProvider();
-        Plan = new PlanViewModel(SelectedDisk.Layout, SelectedRow.Region, limits);
+        Plan = new PlanViewModel(SelectedDisk.Layout, SelectedRow.Region, limits, _policy, IsElevated, IsSimulated,
+            IsSimulated ? null : new Func<CreateVolumeOrder, PlanResult, Task>(ApplyCreateVolumeAsync));
     }
 
     public async Task RefreshAsync()
@@ -206,7 +214,7 @@ public sealed class MainViewModel : ObservableObject
             OnPropertyChanged(nameof(IsSimulated));
 
             Disks.Clear();
-            foreach (var d in snapshot.Disks) Disks.Add(new DiskItemViewModel(d));
+            foreach (var d in snapshot.Disks) Disks.Add(new DiskItemViewModel(d, !snapshot.IsSimulated && _policy.IsPracticeDisk(d)));
             SelectedDisk = Disks.FirstOrDefault(d => d.Disk.Number == previousDisk) ?? Disks.FirstOrDefault();
 
             var warnings = snapshot.Warnings.ToList();
@@ -237,6 +245,123 @@ public sealed class MainViewModel : ObservableObject
         {
             if (ReferenceEquals(_refreshCts, cts)) IsBusy = false;
         }
+    }
+
+    // ---------------- Stage 3: real operations (practice disks only) ----------------
+
+    private async Task ApplyCreateVolumeAsync(CreateVolumeOrder order, PlanResult plan)
+    {
+        var disk = SelectedDisk?.Disk;
+        if (disk is null || disk.Number != order.DiskNumber) return;
+
+        var dialog = new ConfirmChangeWindow(disk, plan) { Owner = Application.Current.MainWindow };
+        if (dialog.ShowDialog() != true)
+        {
+            AppServices.Log.Info("Create volume: cancelled at the confirmation screen. Nothing was changed.");
+            return;
+        }
+
+        IsBusy = true;
+        StatusText = "Applying the change. Don't close ShadowDisk or turn off the PC…";
+        OperationOutcome outcome;
+        try
+        {
+            var runner = new OperationRunner(new WindowsStorageInventory(), new WindowsDiskOperations(_policy), _policy, AppServices.Log);
+            outcome = await runner.CreateVolumeAsync(order, CancellationToken.None);
+        }
+        finally
+        {
+            IsBusy = false;
+        }
+
+        var title = outcome.Status switch
+        {
+            OperationStatus.Succeeded => "Change applied",
+            OperationStatus.PartiallyApplied => "Change only partly applied",
+            OperationStatus.Failed => "Change failed",
+            OperationStatus.Cancelled => "Change cancelled",
+            _ => "Change not started",
+        };
+        var icon = outcome.Status == OperationStatus.Succeeded ? MessageBoxImage.Information : MessageBoxImage.Warning;
+        MessageBox.Show(outcome.Message + "\n\nWhat happened:\n• " + string.Join("\n• ", outcome.Steps), "ShadowDisk — " + title, MessageBoxButton.OK, icon);
+        await RefreshAsync();
+    }
+
+    private async Task CreatePracticeDiskAsync()
+    {
+        if (!IsElevated)
+        {
+            MessageBox.Show("Creating a practice disk needs administrator rights. Click “Restart as administrator” first.", "ShadowDisk",
+                MessageBoxButton.OK, MessageBoxImage.Information);
+            return;
+        }
+        var answer = MessageBox.Show(
+            "ShadowDisk will create a 1 GiB practice disk: a virtual disk file in\n" + PracticeDiskService.Folder +
+            "\n\nWindows will show it as a new, empty disk. Your real disks are not touched. The file grows only as it is used, " +
+            "and you can remove it any time with “Remove practice disks”.\n\nCreate it now?",
+            "ShadowDisk — new practice disk", MessageBoxButton.YesNo, MessageBoxImage.Question, MessageBoxResult.No);
+        if (answer != MessageBoxResult.Yes) return;
+
+        IsBusy = true;
+        try
+        {
+            var progress = new Progress<string>(s => StatusText = s);
+            var path = await _practice.CreateAsync(1024, progress);
+            AppServices.Log.Info($"Practice disk created: {System.IO.Path.GetFileName(path)}.");
+            if (Source != SourceLive) Source = SourceLive; // also refreshes
+        }
+        catch (Exception ex)
+        {
+            AppServices.Log.Error($"Practice disk could not be created: {ex.Message}");
+            MessageBox.Show("The practice disk could not be created:\n" + ex.Message, "ShadowDisk", MessageBoxButton.OK, MessageBoxImage.Warning);
+        }
+        finally
+        {
+            IsBusy = false;
+        }
+        await RefreshAsync();
+        SelectedDisk = Disks.LastOrDefault(d => d.IsPractice) ?? SelectedDisk;
+    }
+
+    private async Task RemovePracticeDisksAsync()
+    {
+        var files = _practice.ListFiles();
+        if (files.Count == 0)
+        {
+            MessageBox.Show("There are no practice disks to remove.", "ShadowDisk", MessageBoxButton.OK, MessageBoxImage.Information);
+            return;
+        }
+        if (!IsElevated)
+        {
+            MessageBox.Show("Removing practice disks needs administrator rights. Click “Restart as administrator” first.", "ShadowDisk",
+                MessageBoxButton.OK, MessageBoxImage.Information);
+            return;
+        }
+        var answer = MessageBox.Show(
+            $"Remove {files.Count} practice disk(s)? Their files are deleted, together with anything stored on them. Your real disks are not touched.",
+            "ShadowDisk — remove practice disks", MessageBoxButton.YesNo, MessageBoxImage.Question, MessageBoxResult.No);
+        if (answer != MessageBoxResult.Yes) return;
+
+        IsBusy = true;
+        try
+        {
+            foreach (var f in files)
+            {
+                StatusText = "Removing " + System.IO.Path.GetFileName(f) + "…";
+                await _practice.RemoveAsync(f);
+                AppServices.Log.Info($"Practice disk removed: {System.IO.Path.GetFileName(f)}.");
+            }
+        }
+        catch (Exception ex)
+        {
+            AppServices.Log.Error($"Removing a practice disk failed: {ex.Message}");
+            MessageBox.Show("A practice disk could not be removed:\n" + ex.Message, "ShadowDisk", MessageBoxButton.OK, MessageBoxImage.Warning);
+        }
+        finally
+        {
+            IsBusy = false;
+        }
+        await RefreshAsync();
     }
 
     private void ExportReport()

@@ -97,7 +97,9 @@ public static class PlanValidator
                 "This plan can't be used as it is. See the checks below.", risks);
 
         var (proposed, region) = BuildProposed(layout, request);
-        return new PlanResult(request, limits, checks, proposed, region, Summarize(layout, request, region), risks);
+        var (changedOffset, changedLength) = ChangedRange(request, region);
+        return new PlanResult(request, limits, checks, proposed, region, Summarize(layout, request, region), risks,
+            changedOffset, changedLength);
     }
 
     private static (DiskLayout Layout, DiskRegion? Region) BuildProposed(DiskLayout layout, PlanRequest request)
@@ -140,6 +142,21 @@ public static class PlanValidator
 
         var proposed = DiskLayoutBuilder.Build(disk with { Partitions = parts.OrderBy(x => x.OffsetBytes).ToList() });
         return (proposed, proposed.Regions.FirstOrDefault(r => ReferenceEquals(r.Partition, changed)));
+    }
+
+    /// <summary>
+    /// The part of the disk the plan affects: for a shrink, the space released at the end of the volume;
+    /// for an extend, the space added after it; for a new volume, the new partition.
+    /// </summary>
+    private static (long Offset, long Length) ChangedRange(PlanRequest request, DiskRegion? proposed)
+    {
+        var target = request.TargetSizeBytes;
+        return request.Kind switch
+        {
+            PlanKind.ShrinkVolume => (request.Partition!.OffsetBytes + target, request.Partition.SizeBytes - target),
+            PlanKind.ExtendVolume => (request.Partition!.EndBytes, target - request.Partition.SizeBytes),
+            _ => (proposed?.OffsetBytes ?? request.Region.OffsetBytes, target),
+        };
     }
 
     private static string Summarize(DiskLayout current, PlanRequest request, DiskRegion? proposed)
