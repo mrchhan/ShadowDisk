@@ -33,6 +33,8 @@ InfoBeforeFile=before-you-install.txt
 OutputDir=..\artifacts\installer
 OutputBaseFilename=ShadowDisk-Setup-{#AppVersion}
 SetupIconFile=..\src\ShadowDisk.App\Assets\shadowdisk.ico
+; AIShadow logo in the top-right corner of every installer page (two sizes for normal and high-DPI screens)
+WizardSmallImageFile=wizard-small-55.bmp,wizard-small-110.bmp
 UninstallDisplayIcon={app}\{#AppExe}
 UninstallDisplayName={#AppName}
 Compression=lzma2/ultra64

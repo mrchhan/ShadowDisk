@@ -13,6 +13,7 @@
   </PropertyGroup>
   <ItemGroup>
     <Resource Include="Assets\shadowdisk.ico" />
+    <Resource Include="Assets\aishadow-logo.png" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\ShadowDisk.Core\ShadowDisk.Core.csproj" />
