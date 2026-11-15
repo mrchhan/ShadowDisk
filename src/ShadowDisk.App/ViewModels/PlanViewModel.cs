@@ -6,6 +6,7 @@ using ShadowDisk.Core.Model;
 using ShadowDisk.Core.Operations;
 using ShadowDisk.Core.Planning;
 using ShadowDisk.Core.Safety;
+using ShadowDisk.Windows;
 
 namespace ShadowDisk.App.ViewModels;
 
@@ -100,13 +101,19 @@ public sealed class PlanViewModel : ObservableObject
         }
     }
     public string NothingToPlanText => _region.Partition is null
-        ? "No change can be planned in this space. See the reasons under “What a future version could check here”."
-        : $"No change can be planned for {_region.Partition.DisplayName}. See the reasons under “What a future version could check here”.";
+        ? "No change can be planned in this space. See the reasons under “Basic checks for possible changes”."
+        : $"No change can be planned for {_region.Partition.DisplayName}. See the reasons under “Basic checks for possible changes”.";
 
     private readonly bool _isSimulated;
     private bool _isApplying;
 
     public RelayCommand ApplyCommand { get; }
+
+    public bool IsPracticeDisk => _policy.IsPracticeDisk(_layout.Disk);
+
+    public string ApplyIntroText => IsPracticeDisk
+        ? "This is a ShadowDisk practice disk, so this plan can be applied for real. You will see a final confirmation screen first."
+        : "Real-disk changes are switched on. This plan would change your REAL disk. Back up first; you will see a final confirmation screen.";
 
     public string ApplyButtonText => Result?.Request.Kind switch
     {
@@ -126,7 +133,7 @@ public sealed class PlanViewModel : ObservableObject
         {
             if (Result is not { IsValid: true } r) return "The plan must pass its checks first.";
             if (_isSimulated) return "These are simulated demo disks. Switch the source to “This PC” and use a practice disk.";
-            var notAllowed = _policy.WhyNotAllowed(_layout.Disk);
+            var notAllowed = _policy.WhyNotAllowed(_layout.Disk, r.Request.Partition, PowerStatus.IsOnMainsPower());
             if (notAllowed.Count > 0) return notAllowed[0];
             if (!_isElevated) return "Real changes need administrator rights. Use “Restart as administrator”.";
             if (_apply is null) return "Applying is not available.";

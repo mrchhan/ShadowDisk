@@ -31,8 +31,14 @@
             <TextBlock Text="DEMO — SIMULATED DISKS" Foreground="White" FontWeight="Bold" />
           </Border>
           <Border Background="#065F46" CornerRadius="4" Padding="8,3"
-                  ToolTip="{Binding ReadOnlyStatement}">
+                  ToolTip="{Binding ReadOnlyStatement}"
+                  Visibility="{Binding RealDiskChangesEnabled, Converter={StaticResource InverseBoolToVis}}">
             <TextBlock Text="PHYSICAL DISKS READ-ONLY — changes only on practice disks" Foreground="White" FontWeight="SemiBold" />
+          </Border>
+          <Border Background="#B91C1C" CornerRadius="4" Padding="8,3"
+                  ToolTip="Changes to real data volumes are allowed in this session. C: and system partitions stay protected."
+                  Visibility="{Binding RealDiskChangesEnabled, Converter={StaticResource BoolToVis}}">
+            <TextBlock Text="REAL DISK CHANGES ON — back up first" Foreground="White" FontWeight="Bold" />
           </Border>
         </StackPanel>
       </DockPanel>
@@ -57,6 +63,8 @@
                 ToolTip="Creates a small virtual disk file for safely trying real changes. Needs administrator rights." />
         <Button Content="Remove practice disks" Command="{Binding RemovePracticeDisksCommand}"
                 ToolTip="Detaches and deletes ShadowDisk's practice disk files." />
+        <Button Content="{Binding RealDiskButtonText}" Command="{Binding ToggleRealDiskChangesCommand}"
+                ToolTip="Allows changes to data volumes on real disks for this session only. Needs administrator rights." />
         <Button Content="Log folder" Command="{Binding OpenLogFolderCommand}" />
       </WrapPanel>
     </Border>
@@ -333,8 +341,7 @@
                       <TextBlock Text="{Binding ApplyBlockedReason}" TextWrapping="Wrap" Foreground="{StaticResource MutedText}"
                                  Visibility="{Binding CanApply, Converter={StaticResource InverseBoolToVis}}" />
                       <StackPanel Visibility="{Binding CanApply, Converter={StaticResource BoolToVis}}">
-                        <TextBlock TextWrapping="Wrap"
-                                   Text="This is a ShadowDisk practice disk, so this plan can be applied for real. You will see a final confirmation screen first." />
+                        <TextBlock TextWrapping="Wrap" Text="{Binding ApplyIntroText}" />
                         <Button Content="{Binding ApplyButtonText}" Command="{Binding ApplyCommand}" HorizontalAlignment="Left"
                                 Background="#B91C1C" Foreground="White" Margin="0,8,0,0" />
                       </StackPanel>
@@ -369,7 +376,7 @@
                 </ItemsControl.ItemTemplate>
               </ItemsControl>
 
-              <TextBlock Text="What a future version could check here (nothing can be changed in this version)"
+              <TextBlock Text="Basic checks for possible changes"
                          FontWeight="SemiBold" Margin="0,8,0,4" />
               <ItemsControl ItemsSource="{Binding Assessments}">
                 <ItemsControl.ItemTemplate>

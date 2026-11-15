@@ -47,6 +47,7 @@ public sealed class MainViewModel : ObservableObject
         RestartElevatedCommand = new RelayCommand(RestartElevated, () => !IsElevated);
         OpenLogFolderCommand = new RelayCommand(OpenLogFolder);
         CreatePracticeDiskCommand = new RelayCommand(() => _ = CreatePracticeDiskAsync(), () => !IsBusy);
+        ToggleRealDiskChangesCommand = new RelayCommand(ToggleRealDiskChanges, () => !IsBusy);
         RemovePracticeDisksCommand = new RelayCommand(() => _ = RemovePracticeDisksAsync(), () => !IsBusy);
 
         foreach (var e in AppServices.Log.Entries) LogEntries.Add(e);
@@ -70,6 +71,43 @@ public sealed class MainViewModel : ObservableObject
     public RelayCommand RestartElevatedCommand { get; }
     public RelayCommand OpenLogFolderCommand { get; }
     public RelayCommand CreatePracticeDiskCommand { get; }
+    public RelayCommand ToggleRealDiskChangesCommand { get; }
+
+    /// <summary>Session-only: every start of ShadowDisk begins with real-disk changes switched off.</summary>
+    public bool RealDiskChangesEnabled => _policy.AllowRealDisks;
+    public string RealDiskButtonText => RealDiskChangesEnabled ? "Real disk changes: ON" : "Real disk changes: OFF";
+
+    private void ToggleRealDiskChanges()
+    {
+        if (_policy.AllowRealDisks)
+        {
+            _policy.AllowRealDisks = false;
+            AppServices.Log.Info("Real disk changes switched OFF.");
+        }
+        else
+        {
+            if (!IsElevated)
+            {
+                MessageBox.Show("Changing a real disk needs administrator rights. Click “Restart as administrator” first.", "ShadowDisk",
+                    MessageBoxButton.OK, MessageBoxImage.Information);
+                return;
+            }
+            var answer = MessageBox.Show(
+                "Switch on changes to REAL disks for this session?\n\n" +
+                "• No disk tool can guarantee your data is safe. A power cut, a failing drive or a Windows error during a change can cause data loss.\n" +
+                "• Back up everything on the volume you will change, somewhere else, and check that the backup opens.\n" +
+                "• Only data volumes can be changed. The Windows drive (C:), its start-up partition, EFI, MSR and Recovery partitions stay protected.\n" +
+                "• Laptops must be plugged in.\n\n" +
+                "This switch turns itself off when ShadowDisk closes.",
+                "ShadowDisk — real disk changes", MessageBoxButton.YesNo, MessageBoxImage.Warning, MessageBoxResult.No);
+            if (answer != MessageBoxResult.Yes) return;
+            _policy.AllowRealDisks = true;
+            AppServices.Log.Warning("Real disk changes switched ON for this session.");
+        }
+        OnPropertyChanged(nameof(RealDiskChangesEnabled));
+        OnPropertyChanged(nameof(RealDiskButtonText));
+        UpdatePlan();
+    }
     public RelayCommand RemovePracticeDisksCommand { get; }
 
     public bool IsSimulated => _snapshot?.IsSimulated ?? Source == SourceDemo;
@@ -260,7 +298,8 @@ public sealed class MainViewModel : ObservableObject
             _ => "Create volume",
         };
 
-        var dialog = new ConfirmChangeWindow(disk, plan) { Owner = Application.Current.MainWindow };
+        var isPractice = _policy.IsPracticeDisk(disk);
+        var dialog = new ConfirmChangeWindow(disk, plan, isPractice) { Owner = Application.Current.MainWindow };
         if (dialog.ShowDialog() != true)
         {
             AppServices.Log.Info($"{kindText}: cancelled at the confirmation screen. Nothing was changed.");
@@ -273,12 +312,12 @@ public sealed class MainViewModel : ObservableObject
         try
         {
             var runner = new OperationRunner(new WindowsStorageInventory(), new WindowsDiskOperations(_policy), _policy,
-                AppServices.Log, new WindowsPartitionLimitsProvider());
+                AppServices.Log, new WindowsPartitionLimitsProvider(), PowerStatus.IsOnMainsPower);
             var fingerprint = LayoutFingerprint.Of(disk);
             if (plan.Request.Kind == PlanKind.CreateVolume && plan.ProposedRegion?.Partition is { } created)
             {
                 outcome = await runner.CreateVolumeAsync(new CreateVolumeOrder(disk.Number, disk.UniqueId, fingerprint,
-                    created.OffsetBytes, created.SizeBytes, "Practice"), CancellationToken.None);
+                    created.OffsetBytes, created.SizeBytes, isPractice ? "Practice" : "New Volume"), CancellationToken.None);
             }
             else if (plan.Request.Partition is { } p)
             {

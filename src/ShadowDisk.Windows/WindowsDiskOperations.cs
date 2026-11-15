@@ -32,7 +32,7 @@ public sealed class WindowsDiskOperations(OperationPolicy policy) : IDiskOperati
     {
         if (!Elevation.IsElevated())
             return new(false, "Administrator rights are needed. Use “Restart as administrator”.");
-        var refusal = CheckLiveDisk(disk, out var scope);
+        var refusal = CheckLiveDisk(disk, partitionNumber, out var scope);
         if (refusal is not null) return new(false, refusal);
 
         using var partition = Wmi.Partition(scope!, disk.Number, partitionNumber);
@@ -45,20 +45,37 @@ public sealed class WindowsDiskOperations(OperationPolicy policy) : IDiskOperati
         return code == 0 ? new(true, null) : new(false, "Resizing failed: " + Wmi.Explain(code));
     }
 
-    /// <summary>Independent check that the live disk is the same ShadowDisk practice disk. Returns a refusal reason or null.</summary>
-    private string? CheckLiveDisk(PhysicalDisk disk, out ManagementScope? scope)
+    /// <summary>
+    /// Independent check, made right before the first Windows call, that the live disk is the one that
+    /// was checked: same number and identifier; for a practice disk also the same file; for a real disk,
+    /// real-disk changes must be on and the target partition must not be the Windows or start-up partition.
+    /// Returns a refusal reason, or null when it is safe to continue.
+    /// </summary>
+    private string? CheckLiveDisk(PhysicalDisk disk, int? partitionNumber, out ManagementScope? scope)
     {
         scope = null;
-        if (!policy.IsPracticeDisk(disk))
-            return "Refused: this is not a ShadowDisk practice disk.";
+        var practice = policy.IsPracticeDisk(disk);
+        if (!practice && !policy.AllowRealDisks)
+            return "Refused: real-disk changes are switched off, and this is not a ShadowDisk practice disk.";
+
         scope = Wmi.StorageScope();
         using var live = Wmi.Disk(scope, disk.Number);
         if (live is null)
             return "The disk is no longer present.";
-        if (Wmi.ToUShort(live["BusType"]) != 15
-            || !string.Equals((live["Location"] as string)?.Trim(), disk.Location, StringComparison.OrdinalIgnoreCase)
-            || !string.Equals((live["UniqueId"] as string)?.Trim(), disk.UniqueId, StringComparison.Ordinal))
+        if (!string.Equals((live["UniqueId"] as string)?.Trim(), disk.UniqueId, StringComparison.Ordinal))
+            return "Refused: the live disk does not have the identifier of the disk that was checked.";
+        if (practice && (Wmi.ToUShort(live["BusType"]) != 15
+                         || !string.Equals((live["Location"] as string)?.Trim(), disk.Location, StringComparison.OrdinalIgnoreCase)))
             return "Refused: the live disk does not match the practice disk that was checked.";
+
+        if (!practice && partitionNumber is { } number)
+        {
+            using var part = Wmi.Partition(scope, disk.Number, number);
+            if (part is null)
+                return "The partition is no longer present.";
+            if (Wmi.ToBool(part["IsBoot"]) || Wmi.ToBool(part["IsSystem"]))
+                return "Refused: Windows reports this partition as its boot or system partition.";
+        }
         return null;
     }
 
@@ -66,7 +83,7 @@ public sealed class WindowsDiskOperations(OperationPolicy policy) : IDiskOperati
     {
         if (!Elevation.IsElevated())
             return new(false, false, null, "Administrator rights are needed. Use “Restart as administrator”.");
-        var refusal = CheckLiveDisk(disk, out var checkedScope);
+        var refusal = CheckLiveDisk(disk, null, out var checkedScope);
         if (refusal is not null) return new(false, false, null, refusal);
         var scope = checkedScope!;
         using var live = Wmi.Disk(scope, disk.Number);

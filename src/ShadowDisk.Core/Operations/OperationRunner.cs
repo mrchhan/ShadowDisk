@@ -19,7 +19,8 @@ public sealed class OperationRunner(
     IDiskOperations operations,
     OperationPolicy policy,
     OperationLog log,
-    IPartitionLimitsProvider? limitsProvider = null)
+    IPartitionLimitsProvider? limitsProvider = null,
+    Func<bool?>? onMainsPower = null)
 {
     private readonly IPartitionLimitsProvider _limits = limitsProvider ?? new EstimatedLimitsProvider();
 
@@ -60,10 +61,12 @@ public sealed class OperationRunner(
         Step("Confirmed it is the same disk with the same layout.");
 
         // 2. Policy and validation on the fresh layout
-        var notAllowed = policy.WhyNotAllowed(disk);
+        var notAllowed = policy.WhyNotAllowed(disk, null, onMainsPower?.Invoke());
         if (notAllowed.Count > 0)
             return Stop(OperationStatus.Blocked, string.Join(" ", notAllowed) + " Nothing was changed.");
-        Step("Confirmed this is a ShadowDisk practice disk.");
+        Step(policy.IsPracticeDisk(disk)
+            ? "Confirmed this is a ShadowDisk practice disk."
+            : "Real disk: confirmed real-disk changes are switched on and the safety checks pass.");
 
         var layout = DiskLayoutBuilder.Build(disk);
         var region = layout.Regions.FirstOrDefault(r => r.Kind == RegionKind.Unallocated &&
@@ -118,7 +121,7 @@ public sealed class OperationRunner(
         if (result.PartitionCreated || created is not null)
             return Stop(OperationStatus.PartiallyApplied,
                 "The partition was created, but not every step finished. The disk now shows what Windows actually did; " +
-                "ShadowDisk did not try to undo anything. On a practice disk you can simply remove it and start again.", after);
+                "ShadowDisk did not try to undo anything. Check the disk in Windows Disk Management before doing anything else.", after);
 
         return Stop(OperationStatus.Failed, $"Windows did not create the volume. {result.Error ?? "No reason was given."} The read-back shows the disk's current state.", after);
     }
@@ -171,10 +174,12 @@ public sealed class OperationRunner(
         Step("Confirmed it is the same disk, layout and partition.");
 
         // 2. Policy, fresh limits, validation
-        var notAllowed = policy.WhyNotAllowed(disk);
+        var notAllowed = policy.WhyNotAllowed(disk, partition, onMainsPower?.Invoke());
         if (notAllowed.Count > 0)
             return Stop(OperationStatus.Blocked, string.Join(" ", notAllowed) + " Nothing was changed.");
-        Step("Confirmed this is a ShadowDisk practice disk.");
+        Step(policy.IsPracticeDisk(disk)
+            ? "Confirmed this is a ShadowDisk practice disk."
+            : $"Real disk: confirmed real-disk changes are switched on and {partition.DisplayName} passes the safety checks.");
 
         var layout = DiskLayoutBuilder.Build(disk);
         var region = layout.Regions.First(r => ReferenceEquals(r.Partition, partition));

@@ -30,9 +30,10 @@ will never claim otherwise.
 
 ## Stage 3 (in progress)
 
-Real changes are enabled **only on ShadowDisk practice disks** (virtual disk files ShadowDisk
-creates). Physical disks stay read-only. Each operation is documented in
-[docs/OPERATIONS.md](docs/OPERATIONS.md) before it is enabled.
+Real changes are enabled on ShadowDisk practice disks (virtual disk files ShadowDisk creates).
+Real disks stay read-only unless you switch on **Real disk changes** for the current session; even
+then only data volumes can be changed, and C: and system partitions stay protected. Each operation
+is documented in [docs/OPERATIONS.md](docs/OPERATIONS.md) before it is enabled.
 
 ## Versions 0.1 and 0.2
 

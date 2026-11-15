@@ -14,16 +14,23 @@ namespace ShadowDisk.App;
 /// </summary>
 public sealed class ConfirmChangeWindow : Window
 {
-    public static (string Word, string Button) WordsFor(PlanKind kind) => kind switch
+    /// <summary>
+    /// The word the user must type. On a real disk, resizing a volume with a drive letter asks for the
+    /// letter itself (e.g. "E"), so the user has to look at which drive they are changing.
+    /// </summary>
+    public static (string Word, string Button) WordsFor(PlanKind kind, bool isPractice, string? driveLetter) => kind switch
     {
+        PlanKind.ShrinkVolume when !isPractice && driveLetter is { Length: > 0 } l => (l, $"Shrink {l}:"),
+        PlanKind.ExtendVolume when !isPractice && driveLetter is { Length: > 0 } l => (l, $"Extend {l}:"),
         PlanKind.ShrinkVolume => ("SHRINK", "Shrink volume"),
         PlanKind.ExtendVolume => ("EXTEND", "Extend volume"),
         _ => ("CREATE", "Create volume"),
     };
 
-    public ConfirmChangeWindow(PhysicalDisk disk, PlanResult plan)
+    public ConfirmChangeWindow(PhysicalDisk disk, PlanResult plan, bool isPractice)
     {
-        var (confirmWord, buttonText) = WordsFor(plan.Request.Kind);
+        var letter = plan.Request.Partition?.Volume?.DriveLetter;
+        var (confirmWord, buttonText) = WordsFor(plan.Request.Kind, isPractice, letter);
         Title = "Confirm a real disk change";
         Width = 620;
         SizeToContent = SizeToContent.Height;
@@ -45,7 +52,9 @@ public sealed class ConfirmChangeWindow : Window
             Margin = new Thickness(0, 0, 0, 14),
             Child = new TextBlock
             {
-                Text = "This is a REAL change. Unlike a preview, it will write to the disk below.",
+                Text = isPractice
+                    ? "This is a REAL change. Unlike a preview, it will write to the practice disk below."
+                    : $"This is a REAL change to your REAL disk ({disk.FriendlyName}), not a practice disk. Unlike a preview, it will write to it.",
                 FontWeight = FontWeights.SemiBold,
                 Foreground = new SolidColorBrush(Color.FromRgb(0x7F, 0x1D, 0x1D)),
                 TextWrapping = TextWrapping.Wrap,
@@ -68,7 +77,9 @@ public sealed class ConfirmChangeWindow : Window
         {
             Content = new TextBlock
             {
-                Text = "This is a practice disk, or I have a backup of everything on this disk and have checked that it opens.",
+                Text = isPractice
+                    ? "This is a practice disk, or I have a backup of everything on this disk and have checked that it opens."
+                    : $"I have a backup of everything on {(letter is { } l2 ? l2 + ":" : "this disk")} somewhere else, and I have checked that the backup opens.",
                 TextWrapping = TextWrapping.Wrap,
             },
             Margin = new Thickness(0, 14, 0, 10),

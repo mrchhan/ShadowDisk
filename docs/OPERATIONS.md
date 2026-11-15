@@ -93,6 +93,28 @@ Windows resizing to a different size (partial), and a same-size request doing no
 extend it to about 600 MiB, then shrink it to about 300 MiB, checking each result in Disk Management
 and that a test file copied onto the volume still opens afterwards.
 
+## Real disks (opt-in, data volumes only)
+
+Create, shrink and extend can be used on real disks only after the user switches on
+**Real disk changes** (toolbar). The switch:
+* needs administrator rights and a warning to be accepted;
+* is **never saved** — every start of ShadowDisk begins with it off;
+* turns the header badge red ("REAL DISK CHANGES ON — back up first").
+
+Even with the switch on, these stay protected: the volume Windows runs from (C:), the system /
+start-up partition (System Reserved or EFI), MSR, Recovery and unrecognised partitions, dynamic disks.
+
+Extra checks for real disks, on top of every practice-disk check:
+* the laptop is on mains power (desktops that can't report power are allowed);
+* Windows reports the disk and the target volume as healthy;
+* BitLocker status of the target volume is known (and it is not locked);
+* the Windows backend re-checks, live, that the partition is not Windows' boot or system partition;
+* to confirm a resize the user types the **drive letter** (e.g. `E`) and ticks that a backup exists.
+
+Suggested first real test: copy everything on the data volume to another drive (for example a folder
+on C: if it has room), check a few files open, then shrink the data volume by a small amount
+(e.g. 10 GiB) and extend it back.
+
 ## Not yet enabled
-* Any change to a physical disk.
+* Changes to the Windows volume (C:) and system partitions.
 * Moving partitions (Stage 5).

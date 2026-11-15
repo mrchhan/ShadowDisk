@@ -82,12 +82,113 @@ public class OperationTests
             [new Partition(number, 1, MiB, 15 * MiB, PartitionKind.MicrosoftReserved, ShadowDisk.Core.Mapping.StorageMapper.GptMicrosoftReserved, null, false, false, false, true, null)],
             Location: PracticeFolder + @"\practice-1.vhd", UniqueId: "VHD-UNIQUE-1");
 
-    private static (OperationRunner Runner, FakeInventory Inventory, FakeDiskOperations Ops, OperationLog Log) Setup(PhysicalDisk disk)
+    private static (OperationRunner Runner, FakeInventory Inventory, FakeDiskOperations Ops, OperationLog Log) Setup(
+        PhysicalDisk disk, bool allowRealDisks = false, bool? onMains = true)
     {
         var inventory = new FakeInventory([disk]);
         var ops = new FakeDiskOperations(inventory);
         var log = new OperationLog(null);
-        return (new OperationRunner(inventory, ops, new OperationPolicy(PracticeFolder), log), inventory, ops, log);
+        var policy = new OperationPolicy(PracticeFolder) { AllowRealDisks = allowRealDisks };
+        return (new OperationRunner(inventory, ops, policy, log, null, () => onMains), inventory, ops, log);
+    }
+
+    /// <summary>A real (physical) system disk like the test PC: System Reserved, C: (Windows), E: (data), free space.</summary>
+    private static PhysicalDisk RealSystemDisk()
+    {
+        var g = ByteSize.GiB;
+        Volume Vol(string? letter, long size, long free, EncryptionState enc = EncryptionState.NotEncrypted) =>
+            new(letter, null, "NTFS", size, free, ReportedHealth.Healthy, enc);
+        return new PhysicalDisk(0, "Hitachi", "SN", 100 * g, 512, 4096, PartitionStyle.Mbr, BusType.Raid,
+            true, true, false, false, ReportedHealth.Healthy,
+            [
+                new Partition(0, 1, MiB, 50 * MiB, PartitionKind.Basic, null, 7, false, true, true, false, Vol(null, 50 * MiB, 18 * MiB)),
+                new Partition(0, 2, 51 * MiB, 41 * g - 51 * MiB, PartitionKind.Basic, null, 7, true, false, false, false, Vol("C", 41 * g - 51 * MiB, 20 * g)),
+                new Partition(0, 3, 41 * g, 30 * g, PartitionKind.Basic, null, 7, false, false, false, false, Vol("E", 30 * g, 25 * g)),
+            ],
+            Location: "PCI Slot 0", UniqueId: "REAL-DISK-0");
+    }
+
+    private static ResizeOrder ResizeReal(PhysicalDisk disk, int partition, long target)
+    {
+        var p = disk.Partitions.Single(x => x.PartitionNumber == partition);
+        return new ResizeOrder(disk.Number, disk.UniqueId, LayoutFingerprint.Of(disk), partition, p.OffsetBytes, p.SizeBytes, target);
+    }
+
+    [Fact]
+    public async Task Real_disk_is_refused_while_real_disk_changes_are_off()
+    {
+        var disk = RealSystemDisk();
+        var (runner, _, ops, _) = Setup(disk, allowRealDisks: false);
+        var outcome = await runner.ResizeAsync(ResizeReal(disk, 3, 20 * ByteSize.GiB), CancellationToken.None);
+        Assert.Equal(OperationStatus.Blocked, outcome.Status);
+        Assert.Contains("read-only", outcome.Message);
+        Assert.Equal(0, ops.ResizeCalls);
+    }
+
+    [Fact]
+    public async Task Real_data_volume_can_be_shrunk_when_switched_on()
+    {
+        var disk = RealSystemDisk();
+        var (runner, inventory, ops, _) = Setup(disk, allowRealDisks: true);
+        var outcome = await runner.ResizeAsync(ResizeReal(disk, 3, 20 * ByteSize.GiB), CancellationToken.None);
+        Assert.Equal(OperationStatus.Succeeded, outcome.Status);
+        Assert.Equal(1, ops.ResizeCalls);
+        Assert.Contains(outcome.Steps, s => s.Contains("Real disk"));
+        Assert.Equal(20 * ByteSize.GiB, inventory.Disks[0].Partitions.Single(p => p.PartitionNumber == 3).SizeBytes);
+    }
+
+    [Fact]
+    public async Task Windows_volume_stays_protected_even_with_real_disk_changes_on()
+    {
+        var disk = RealSystemDisk();
+        var (runner, _, ops, _) = Setup(disk, allowRealDisks: true);
+        var outcome = await runner.ResizeAsync(ResizeReal(disk, 2, 30 * ByteSize.GiB), CancellationToken.None);
+        Assert.Equal(OperationStatus.Blocked, outcome.Status);
+        Assert.Contains("holds Windows", outcome.Message);
+        Assert.Equal(0, ops.ResizeCalls);
+    }
+
+    [Fact]
+    public async Task System_reserved_stays_protected_with_real_disk_changes_on()
+    {
+        var disk = RealSystemDisk();
+        var policy = new OperationPolicy(PracticeFolder) { AllowRealDisks = true };
+        Assert.Contains(policy.WhyNotAllowed(disk, disk.Partitions[0], true), r => r.Contains("holds Windows"));
+        await Task.CompletedTask;
+    }
+
+    [Fact]
+    public async Task Real_disk_changes_are_refused_on_battery()
+    {
+        var disk = RealSystemDisk();
+        var (runner, _, ops, _) = Setup(disk, allowRealDisks: true, onMains: false);
+        var outcome = await runner.ResizeAsync(ResizeReal(disk, 3, 20 * ByteSize.GiB), CancellationToken.None);
+        Assert.Equal(OperationStatus.Blocked, outcome.Status);
+        Assert.Contains("battery", outcome.Message);
+        Assert.Equal(0, ops.ResizeCalls);
+    }
+
+    [Fact]
+    public void Real_disk_volume_with_unknown_bitlocker_or_bad_health_is_refused()
+    {
+        var disk = RealSystemDisk();
+        var policy = new OperationPolicy(PracticeFolder) { AllowRealDisks = true };
+        var e = disk.Partitions[2];
+        Assert.Contains(policy.WhyNotAllowed(disk, e with { Volume = e.Volume! with { Encryption = EncryptionState.Unknown } }, true),
+            r => r.Contains("BitLocker status is unknown"));
+        Assert.Contains(policy.WhyNotAllowed(disk, e with { Volume = e.Volume! with { Health = ReportedHealth.Warning } }, true),
+            r => r.Contains("healthy"));
+        Assert.Empty(policy.WhyNotAllowed(disk, e, null));   // unknown power state (e.g. desktop) is not a blocker
+    }
+
+    [Fact]
+    public async Task Creating_a_volume_in_free_space_on_the_real_system_disk_is_allowed_when_switched_on()
+    {
+        var disk = RealSystemDisk();
+        var (runner, _, ops, _) = Setup(disk, allowRealDisks: true);
+        var outcome = await runner.CreateVolumeAsync(OrderFor(disk, 5 * ByteSize.GiB), CancellationToken.None);
+        Assert.True(outcome.Status == OperationStatus.Succeeded, outcome.Message);
+        Assert.Equal(1, ops.Calls);
     }
 
     private static CreateVolumeOrder OrderFor(PhysicalDisk disk, long size)
@@ -122,6 +223,7 @@ public class OperationTests
         Assert.Equal(OperationStatus.Blocked, outcome.Status);
         Assert.Equal(0, ops.Calls);
         Assert.Contains("practice disks", outcome.Message);
+        Assert.Contains("read-only", outcome.Message);
         Assert.False(outcome.DiskMayHaveChanged);
     }
 

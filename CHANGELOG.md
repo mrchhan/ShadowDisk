@@ -9,7 +9,9 @@
   confirmation by typing SHRINK or EXTEND, one Windows call, read-back of the exact new size.
 - Clearer plan preview: dashed outline of only the space that changes, drag handle for the size,
   and an explanation when a volume can't be extended (e.g. Recovery sits after C:).
-- Physical disks remain read-only.
+- **Real disk changes (opt-in, per session):** create/shrink/extend on real DATA volumes after switching
+  it on. C:, start-up, EFI, MSR and Recovery partitions stay protected. Extra checks: mains power,
+  volume health, known BitLocker status; confirm by typing the drive letter.
 
 ## 0.2.0
 - **Plan a change (preview only):** shrink a volume, extend it into free space after it, or create a
