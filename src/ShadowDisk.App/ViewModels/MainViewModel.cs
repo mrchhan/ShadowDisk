@@ -56,7 +56,7 @@ public sealed class MainViewModel : ObservableObject
     }
 
     public string ReadOnlyStatement => SafetyAnalyzer.ReadOnlyStatement;
-    public string WindowTitle => $"ShadowDisk {AppServices.Version} — read-only disk inspector";
+    public string WindowTitle => $"ShadowDisk {AppServices.Version} — disk & partition manager";
     public bool IsElevated { get; }
 
     public IReadOnlyList<string> SourceOptions { get; } = [SourceLive, SourceDemo];

@@ -23,13 +23,13 @@ preconditions, rollback limits and tests on disposable virtual disks (VHDX):
 3. Shrink a volume
 MBR↔GPT conversion and merging partitions are not planned.
 
-## Stage 5: Move partitions (planned, after Stage 3 is proven)
-Goal: give space from one volume to the volume before it (for example free space from E: to C:),
-which Windows' own tools cannot do because a volume can only grow into space directly after it.
-This means copying a partition's data block by block to a new position, the riskiest disk operation,
-so it will come with: practice disks only for a long time, a full plan preview of every move,
-power/battery checks, BitLocker suspended or refused, a verified-backup requirement, progress that
-survives a restart where possible, and detailed documentation of what happens if it is interrupted.
+## Stage 5: Give space to C: (design agreed, not built yet)
+Goal: give free space from a later data volume (e.g. E:) to the Windows volume C:, which Windows'
+own tools can't do because a volume can only grow into space directly after it.
+
+ShadowDisk will do this **without moving data block by block**. It only uses operations Windows
+supports, plus a verified file copy. See the step-by-step design in
+[OPERATIONS.md](OPERATIONS.md#planned-give-space-to-c-stage-5).
 
 ## Stage 4: Health, polish and recovery guidance
 - Detailed drive-health counters (`MSFT_StorageReliabilityCounter`), clearly separate from scans

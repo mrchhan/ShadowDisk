@@ -115,6 +115,48 @@ Suggested first real test: copy everything on the data volume to another drive (
 on C: if it has room), check a few files open, then shrink the data volume by a small amount
 (e.g. 10 GiB) and extend it back.
 
+## Planned: Give space to C: (Stage 5)
+
+**Status:** design only. Nothing below is built. It will be built and proven on practice disks first.
+
+**Why it's needed:** on a disk laid out as `System | C: | Recovery | E: | free`, space freed from E:
+lands at the end of the disk, and C: can only grow into space directly after it. Recovery and E: are
+in the way.
+
+**Why not move partitions block by block** (the way many partition tools do): if power fails while a
+partition is being moved, the half-moved partition can be lost. ShadowDisk instead uses only
+operations Windows supports, each of which either completes or fails cleanly, plus a file copy that is
+verified before anything is deleted.
+
+**Steps (a guided wizard, one step at a time, each confirmed):**
+1. **Check:** mains power, C: and E: healthy (`chkdsk` scan, read-only), BitLocker status known,
+   enough room (E:'s used data must fit in the space a shrink can free), and a full backup confirmed.
+2. **Shrink E:** to its data plus headroom. The freed space appears at the end of the disk.
+3. **Create a temporary volume** ("E-new") in that freed space.
+4. **Copy every file** from E: to E-new with file attributes and timestamps, then **verify**: same
+   file count, same total size, and a SHA-256 checksum of every file. Any mismatch stops the wizard;
+   E: is untouched and the copy can simply be deleted.
+5. **Delete E:** only after verification passes, and only after the user confirms again.
+6. **Move Recovery** the documented Microsoft way: `reagentc /disable` (Windows keeps WinRE inside
+   C:), delete the old Recovery partition, create a new one at the end of the free space, copy WinRE
+   back and `reagentc /enable`. If any part fails, WinRE stays safely inside C:, which still works.
+7. **Extend C:** into the space now directly after it (Windows supports extending its own volume
+   while running).
+8. **Rename E-new to E:** so apps and shortcuts find their files again.
+
+**Time:** dominated by copying E:'s *used* data (twice for verification: copy, then checksum). On a
+laptop hard disk expect roughly 30–60 minutes for ~45 GB. Moving partitions with other tools also
+copies all used data.
+
+**What can go wrong, and the state it leaves:**
+* Failure in steps 1–4: nothing on C: or E: has changed except E: being smaller; remove E-new and
+  extend E: back.
+* Failure in step 6: WinRE remains inside C: (Windows still boots and can still reach recovery
+  options); ShadowDisk shows the exact `reagentc` status.
+* Failure in step 7: C: keeps its old size; the free space stays unallocated and can be used later.
+* Power loss: each step is a separate Windows operation that completes or fails as a whole; the
+  wizard re-reads the disk on next start and shows which step was last completed.
+
 ## Not yet enabled
-* Changes to the Windows volume (C:) and system partitions.
-* Moving partitions (Stage 5).
+* Changes to the Windows volume (C:) and system partitions (Stage 5 will allow *extending* C: only).
+* Give space to C: (Stage 5, designed above).
