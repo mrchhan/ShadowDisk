@@ -48,6 +48,7 @@ public sealed class MainViewModel : ObservableObject
         OpenLogFolderCommand = new RelayCommand(OpenLogFolder);
         CreatePracticeDiskCommand = new RelayCommand(() => _ = CreatePracticeDiskAsync(), () => !IsBusy);
         ToggleRealDiskChangesCommand = new RelayCommand(ToggleRealDiskChanges, () => !IsBusy);
+        OpenCopyVerifyCommand = new RelayCommand(OpenCopyVerify, () => !IsBusy && _snapshot is { IsSimulated: false });
         RemovePracticeDisksCommand = new RelayCommand(() => _ = RemovePracticeDisksAsync(), () => !IsBusy);
 
         foreach (var e in AppServices.Log.Entries) LogEntries.Add(e);
@@ -72,6 +73,19 @@ public sealed class MainViewModel : ObservableObject
     public RelayCommand OpenLogFolderCommand { get; }
     public RelayCommand CreatePracticeDiskCommand { get; }
     public RelayCommand ToggleRealDiskChangesCommand { get; }
+    public RelayCommand OpenCopyVerifyCommand { get; }
+
+    private void OpenCopyVerify()
+    {
+        if (_snapshot is null) return;
+        var drives = _snapshot.Disks
+            .SelectMany(d => d.Partitions)
+            .Where(p => p.Volume is { DriveLetter: { Length: > 0 } })
+            .Select(p => new CopyDrive(p.Volume!.DriveLetter!, p.Volume.Label, p.Volume.FreeBytes, p.Volume.UsedBytes))
+            .OrderBy(d => d.Letter, StringComparer.Ordinal)
+            .ToList();
+        new CopyVerifyWindow(drives) { Owner = Application.Current.MainWindow }.ShowDialog();
+    }
 
     /// <summary>Session-only: every start of ShadowDisk begins with real-disk changes switched off.</summary>
     public bool RealDiskChangesEnabled => _policy.AllowRealDisks;

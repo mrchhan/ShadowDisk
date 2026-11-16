@@ -115,6 +115,26 @@ Suggested first real test: copy everything on the data volume to another drive (
 on C: if it has room), check a few files open, then shrink the data volume by a small amount
 (e.g. 10 GiB) and extend it back.
 
+## Copy & verify (Stage 5, part 1 — built)
+
+Copies every file from one drive into a **new, empty folder** on another drive, then reads every copy
+back and compares its SHA-256 checksum with the checksum taken while reading the original.
+
+* The source is only read. Nothing is overwritten (a non-empty destination is refused, and every file
+  is created with "create new"). Nothing is deleted.
+* Refused before starting if the destination is inside the source or there is not enough free space.
+* Skipped and listed: `System Volume Information`, `$RECYCLE.BIN` and `Recovery` at the drive root
+  (Windows recreates them), and links/junctions (not followed, so nothing is copied twice).
+* Files that can't be read (e.g. locked) are listed as problems; the result is then "NOT complete".
+* Timestamps are kept; on Windows, file attributes are kept (except compression/encryption flags).
+* Each copied file is flushed to disk before verification.
+* Cancel stops at the next file; the source is untouched and the partial copy can be deleted.
+* Only a fully verified copy will ever allow the Stage 5 wizard to delete an original volume.
+
+**Tests:** `CopyTests` cover a full verified copy, the source being unchanged, timestamps, a corrupted
+copy being caught, refusing a non-empty destination, not enough space, destination inside source,
+cancelling, skipped system folders, links not followed, and progress reporting.
+
 ## Planned: Give space to C: (Stage 5)
 
 **Status:** design only. Nothing below is built. It will be built and proven on practice disks first.

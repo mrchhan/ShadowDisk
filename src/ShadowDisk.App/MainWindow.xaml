@@ -63,6 +63,8 @@
                 ToolTip="Creates a small virtual disk file for safely trying real changes. Needs administrator rights." />
         <Button Content="Remove practice disks" Command="{Binding RemovePracticeDisksCommand}"
                 ToolTip="Detaches and deletes ShadowDisk's practice disk files." />
+        <Button Content="Copy &amp; verify…" Command="{Binding OpenCopyVerifyCommand}"
+                ToolTip="Copy a drive's files into a new folder on another drive and check every file's checksum. Never deletes anything." />
         <Button Content="{Binding RealDiskButtonText}" Command="{Binding ToggleRealDiskChangesCommand}"
                 ToolTip="Allows changes to data volumes on real disks for this session only. Needs administrator rights." />
         <Button Content="Log folder" Command="{Binding OpenLogFolderCommand}" />
@@ -323,7 +325,7 @@
                     </ItemsControl.ItemTemplate>
                   </ItemsControl>
 
-                  <TextBlock Text="Before any real change (planned for a later version)" FontWeight="SemiBold" Margin="0,0,0,4"
+                  <TextBlock Text="Risks of doing this for real" FontWeight="SemiBold" Margin="0,0,0,4"
                              Visibility="{Binding HasResult, Converter={StaticResource BoolToVis}}" />
                   <ItemsControl ItemsSource="{Binding Risks}">
                     <ItemsControl.ItemTemplate>

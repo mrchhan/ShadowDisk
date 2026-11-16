@@ -9,6 +9,8 @@
   confirmation by typing SHRINK or EXTEND, one Windows call, read-back of the exact new size.
 - Clearer plan preview: dashed outline of only the space that changes, drag handle for the size,
   and an explanation when a volume can't be extended (e.g. Recovery sits after C:).
+- **Copy & verify** (Stage 5 part 1): copy a drive's files to a new folder on another drive and check
+  every file's SHA-256 checksum; never overwrites or deletes.
 - **Real disk changes (opt-in, per session):** create/shrink/extend on real DATA volumes after switching
   it on. C:, start-up, EFI, MSR and Recovery partitions stay protected. Extra checks: mains power,
   volume health, known BitLocker status; confirm by typing the drive letter.
