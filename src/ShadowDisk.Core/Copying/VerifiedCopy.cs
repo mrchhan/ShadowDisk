@@ -102,7 +102,8 @@ public sealed class VerifiedCopy
             if (!IsUnfinishedCopyOf(dst, src))
                 return Refuse($"{dst} is not an unfinished ShadowDisk copy of {src}, so it can't be resumed.");
         }
-        else if (Directory.Exists(dst) && Directory.EnumerateFileSystemEntries(dst).Any())
+        else if (Directory.Exists(dst) && Directory.EnumerateFileSystemEntries(dst)
+                     .Any(e => !SkippedRootFolders.Contains(Path.GetFileName(e), StringComparer.OrdinalIgnoreCase)))
         {
             return Refuse($"The destination folder {dst} is not empty. ShadowDisk never overwrites files; choose an empty or new folder.");
         }

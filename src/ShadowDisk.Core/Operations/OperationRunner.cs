@@ -76,7 +76,10 @@ public sealed class OperationRunner(
             return Stop(OperationStatus.Blocked, "The planned space is no longer unallocated. Nothing was changed.");
         var (offset, limits) = PlanLimits.ForNewVolume(layout, region);
         var validation = PlanValidator.Validate(layout, new PlanRequest(PlanKind.CreateVolume, region, order.SizeBytes), limits);
-        if (!validation.IsValid || offset != order.OffsetBytes)
+        var fitsInArea = order.OffsetBytes % PlanLimits.Alignment == 0
+                         && order.OffsetBytes >= offset
+                         && order.OffsetBytes + order.SizeBytes <= offset + limits.MaxBytes;
+        if (!validation.IsValid || !fitsInArea)
             return Stop(OperationStatus.Blocked, "The plan no longer passes its checks on the current disk. Nothing was changed.");
         Step("The plan passed all checks again.");
 

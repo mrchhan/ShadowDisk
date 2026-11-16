@@ -59,11 +59,9 @@ public sealed class DeleteSafetyTests : IDisposable
     [Fact]
     public void Registry_finds_copies_by_source_regardless_of_trailing_slash()
     {
-        VerifiedCopyRegistry.Clear();
         var rec = new VerifiedCopyRecord(_root, "dest", DateTimeOffset.UtcNow, 1, 1);
         VerifiedCopyRegistry.Record(rec);
         Assert.Same(rec, VerifiedCopyRegistry.Find(_root + Path.DirectorySeparatorChar));
-        VerifiedCopyRegistry.Clear();
-        Assert.Null(VerifiedCopyRegistry.Find(_root));
+        Assert.Null(VerifiedCopyRegistry.Find(Path.Combine(_root, "never-copied")));
     }
 }

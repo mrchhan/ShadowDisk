@@ -11,9 +11,10 @@ namespace ShadowDisk.App;
 /// </summary>
 public sealed class ConfirmDeleteWindow : Window
 {
-    public ConfirmDeleteWindow(string heading, IEnumerable<string> facts, string confirmText, string checkboxText)
+    public ConfirmDeleteWindow(string heading, IEnumerable<string> facts, string confirmText, string checkboxText,
+        string title = "Confirm deleting a volume", string buttonText = "Delete volume")
     {
-        Title = "Confirm deleting a volume";
+        Title = title;
         Width = 600;
         SizeToContent = SizeToContent.Height;
         ResizeMode = ResizeMode.NoResize;
@@ -45,7 +46,7 @@ public sealed class ConfirmDeleteWindow : Window
 
         var buttons = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Right };
         var cancel = new Button { Content = "Cancel", IsCancel = true, IsDefault = true, MinWidth = 100, Padding = new Thickness(12, 5, 12, 5), Margin = new Thickness(0, 0, 8, 0) };
-        var ok = new Button { Content = "Delete volume", MinWidth = 140, Padding = new Thickness(12, 5, 12, 5), IsEnabled = false,
+        var ok = new Button { Content = buttonText, MinWidth = 140, Padding = new Thickness(12, 5, 12, 5), IsEnabled = false,
                               Background = new SolidColorBrush(Color.FromRgb(0xB9, 0x1C, 0x1C)), Foreground = Brushes.White };
         cancel.Click += (_, _) => DialogResult = false;
         ok.Click += (_, _) => DialogResult = true;

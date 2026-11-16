@@ -171,7 +171,7 @@ public sealed class WindowsDiskOperations(OperationPolicy policy) : IDiskOperati
             var (formatCode, _) = Wmi.Invoke(volume, "Format", p =>
             {
                 p["FileSystem"] = "NTFS";
-                p["FileSystemLabel"] = volumeLabel;
+                if (!string.IsNullOrEmpty(volumeLabel)) p["FileSystemLabel"] = volumeLabel;
                 p["Full"] = false;
             });
             if (formatCode != 0)

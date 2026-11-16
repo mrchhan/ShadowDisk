@@ -13,6 +13,7 @@ using ShadowDisk.Core.Operations;
 using ShadowDisk.Core.Planning;
 using ShadowDisk.Core.Reporting;
 using ShadowDisk.Core.Safety;
+using ShadowDisk.Core.Wizard;
 using ShadowDisk.Windows;
 
 namespace ShadowDisk.App.ViewModels;
@@ -53,6 +54,7 @@ public sealed class MainViewModel : ObservableObject
         OpenCopyVerifyCommand = new RelayCommand(OpenCopyVerify, () => !IsBusy && _snapshot is { IsSimulated: false });
         DeleteVolumeCommand = new RelayCommand(() => _ = DeleteVolumeAsync(), () => !IsBusy && HasVolumeActions);
         ChangeLetterCommand = new RelayCommand(() => _ = ChangeLetterAsync(), () => !IsBusy && HasVolumeActions);
+        GiveSpaceCommand = new RelayCommand(() => _ = GiveSpaceAsync(), () => !IsBusy && HasVolumeActions);
         RemovePracticeDisksCommand = new RelayCommand(() => _ = RemovePracticeDisksAsync(), () => !IsBusy);
 
         foreach (var e in AppServices.Log.Entries) LogEntries.Add(e);
@@ -80,6 +82,42 @@ public sealed class MainViewModel : ObservableObject
     public RelayCommand OpenCopyVerifyCommand { get; }
     public RelayCommand DeleteVolumeCommand { get; }
     public RelayCommand ChangeLetterCommand { get; }
+    public RelayCommand GiveSpaceCommand { get; }
+
+    /// <summary>Stage 5 part 3: give space to the selected volume from the volume directly after it.</summary>
+    private async Task GiveSpaceAsync()
+    {
+        if (SelectedDisk is not { } item || SelectedRow?.Region.Partition is not { Volume: not null } target) return;
+        void Info(string text) => MessageBox.Show(text, "ShadowDisk — give space", MessageBoxButton.OK, MessageBoxImage.Information);
+        if (!IsElevated) { Info("This needs administrator rights. Click “Restart as administrator” first."); return; }
+
+        var layout = item.Layout;
+        var regions = layout.Regions.Where(r => r.Kind != RegionKind.Gap).ToList();
+        var donor = regions.SkipWhile(r => !ReferenceEquals(r.Partition, target)).Skip(1).FirstOrDefault()?.Partition;
+
+        IsBusy = true;
+        StatusText = "Asking Windows how far the next volume can shrink…";
+        SizeLimits? limits = null;
+        try
+        {
+            if (donor?.Volume is not null)
+                limits = await new WindowsPartitionLimitsProvider().GetLimitsAsync(layout, donor, PlanKind.ShrinkVolume, CancellationToken.None);
+        }
+        finally { IsBusy = false; StatusText = ""; }
+
+        var plan = GiveSpacePlanner.Plan(layout, target, limits);
+        if (!plan.IsPossible) { Info(string.Join("\n\n", plan.Problems)); return; }
+        var power = PowerStatus.IsOnMainsPower();
+        var reasons = _policy.WhyNotAllowed(item.Disk, plan.Donor, power).Concat(_policy.WhyNotAllowed(item.Disk, target, power)).Distinct().ToList();
+        if (reasons.Count > 0) { Info(string.Join("\n\n", reasons)); return; }
+
+        var window = new GiveSpaceWindow(plan, give => new GiveSpaceWizard(plan, give, new WindowsStorageInventory(), NewRunner(),
+            new WindowsPartitionLimitsProvider(), l => $@"{l}:\",
+            (s, d, resume, p, ct) => new VerifiedCopy(AppServices.Log).CopyAndVerifyAsync(s, d, p, ct, resume), AppServices.Log))
+        { Owner = Application.Current.MainWindow };
+        window.ShowDialog();
+        if (window.ChangedDisk) await RefreshAsync();
+    }
 
     /// <summary>Delete / change letter apply to a real (not demo) data partition with a volume.</summary>
     public bool HasVolumeActions => !IsSimulated && SelectedRow?.Region.Partition is { Volume: not null };

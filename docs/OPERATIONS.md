@@ -157,6 +157,31 @@ Letters D–Z only, never one already in use. The Windows volume and system part
 If the old letter is removed but the new one can't be added, the result is "partly applied" and the
 volume simply has no letter until one is given.
 
+## Give space to the drive before (Stage 5, part 3 — built)
+
+For a layout `| target | donor | (free) |`, gives part of the donor's space to the target, which Windows
+can't do directly. Data volumes only: the target must not be the Windows volume (that is part 4), and
+the donor must be an ordinary data volume with a drive letter (Recovery and system partitions are refused).
+
+The user chooses how much to give: at least what Windows lets the donor shrink to, at most the area
+minus the donor's files plus headroom (10% or 256 MiB, whichever is larger). Then, one step per click:
+
+1. **Shrink the donor** to the amount being given (skipped if the copy fits in free space after it).
+2. **Create a temporary NTFS volume** at the end of the area, after the space being given.
+3. **Copy & verify** the donor's files into it (resumable; every SHA-256 checksum must match).
+4. **Delete the old donor** — only if step 3 verified and nothing changed since; typed `DELETE <letter>`.
+5. **Extend the target** to the maximum Windows reports.
+6. **Give the new volume the donor's old letter.**
+
+Each step re-reads the disk and goes through the same runner checks as the individual operations.
+A failed step stops the wizard; it can be run again (the copy resumes). Declining the delete changes
+nothing. If the window is closed part-way, nothing further happens and the remaining steps can be done
+by hand with the individual tools. (v1 does not yet resume the wizard itself after ShadowDisk restarts.)
+
+**Tests:** `GiveSpaceTests` run the whole wizard on a simulated practice disk with real files, plus
+declining the delete, a failed copy stopping before any delete, and the planner's refusals
+(Windows volume, Recovery in the way, free space already after the target, donor too full).
+
 ## Planned: Give space to C: (Stage 5)
 
 **Status:** design only. Nothing below is built. It will be built and proven on practice disks first.
