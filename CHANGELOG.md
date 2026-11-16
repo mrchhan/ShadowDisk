@@ -11,6 +11,10 @@
   and an explanation when a volume can't be extended (e.g. Recovery sits after C:).
 - **Copy & verify** (Stage 5 part 1): copy a drive's files to a new folder on another drive and check
   every file's SHA-256 checksum; never overwrites or deletes.
+- **Delete volume** (Stage 5 part 2): only empty volumes or ones with a verified, unchanged copy from this
+  session; system/Windows/Recovery partitions can never be deleted; confirm by typing DELETE <letter>.
+- **Change drive letter**: files untouched; letters in use and the Windows drive are refused.
+- Copy & verify can **resume** an interrupted copy.
 - **Real disk changes (opt-in, per session):** create/shrink/extend on real DATA volumes after switching
   it on. C:, start-up, EFI, MSR and Recovery partitions stay protected. Extra checks: mains power,
   volume health, known BitLocker status; confirm by typing the drive letter.

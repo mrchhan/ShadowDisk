@@ -215,5 +215,7 @@ public sealed class CopyVerifyWindow : Window
         _details.Text = string.Join(Environment.NewLine, lines);
         _open.IsEnabled = Directory.Exists(folder);
         UpdateTarget();
+        // Keep showing the folder this run actually used (UpdateTarget would suggest a new, time-stamped name).
+        _target.Text = (report.IsVerified ? "Verified copy is in: " : "Copy folder: ") + folder;
     }
 }

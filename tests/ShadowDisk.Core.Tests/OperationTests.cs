@@ -34,6 +34,32 @@ internal sealed class FakeDiskOperations(FakeInventory inventory) : IDiskOperati
     public bool FailFormat { get; set; }
     public bool Throw { get; set; }
 
+    public int DeleteCalls { get; private set; }
+    public int LetterCalls { get; private set; }
+
+    public Task<BackendResult> DeletePartitionAsync(PhysicalDisk disk, int partitionNumber, long offsetBytes)
+    {
+        DeleteCalls++;
+        if (FailCompletely) return Task.FromResult(new BackendResult(false, "The volume is in use"));
+        var index = inventory.Disks.FindIndex(d => d.Number == disk.Number);
+        inventory.Disks[index] = disk with { Partitions = disk.Partitions.Where(p => p.PartitionNumber != partitionNumber).ToList() };
+        return Task.FromResult(new BackendResult(true, null));
+    }
+
+    public bool LoseLetter { get; set; }   // simulate: old letter removed, new one not assigned
+
+    public Task<BackendResult> SetDriveLetterAsync(PhysicalDisk disk, int partitionNumber, long offsetBytes, string? oldLetter, string newLetter)
+    {
+        LetterCalls++;
+        var index = inventory.Disks.FindIndex(d => d.Number == disk.Number);
+        inventory.Disks[index] = disk with
+        {
+            Partitions = disk.Partitions.Select(p => p.PartitionNumber == partitionNumber && p.Volume is { } v
+                ? p with { Volume = v with { DriveLetter = LoseLetter ? null : newLetter } } : p).ToList(),
+        };
+        return Task.FromResult(LoseLetter ? new BackendResult(false, "Access path not added") : new BackendResult(true, null));
+    }
+
     public int ResizeCalls { get; private set; }
     public long? ResizeTo { get; set; }   // simulate Windows resizing to a different size than asked
 
@@ -427,6 +453,129 @@ public class OperationTests
         var outcome = await runner.ResizeAsync(ResizeFor(disk, 400 * MiB), CancellationToken.None);
         Assert.Equal(OperationStatus.Blocked, outcome.Status);
         Assert.Equal(0, ops.ResizeCalls);
+    }
+
+    // ---------- Delete ----------
+
+    private static DeleteOrder DeleteFor(PhysicalDisk disk, int partition)
+    {
+        var p = disk.Partitions.Single(x => x.PartitionNumber == partition);
+        return new DeleteOrder(disk.Number, disk.UniqueId, LayoutFingerprint.Of(disk), partition, p.OffsetBytes, p.SizeBytes);
+    }
+
+    [Fact]
+    public async Task Deletes_a_safe_practice_volume_and_confirms_it_is_gone()
+    {
+        var disk = PracticeDiskWithVolume();
+        var (runner, inventory, ops, _) = Setup(disk);
+        var outcome = await runner.DeleteAsync(DeleteFor(disk, 2), _ => null, CancellationToken.None);
+        Assert.Equal(OperationStatus.Succeeded, outcome.Status);
+        Assert.Equal(1, ops.DeleteCalls);
+        Assert.DoesNotContain(inventory.Disks[0].Partitions, p => p.PartitionNumber == 2);
+    }
+
+    [Fact]
+    public async Task Delete_is_refused_when_the_files_are_not_safe()
+    {
+        var disk = PracticeDiskWithVolume();
+        var (runner, _, ops, _) = Setup(disk);
+        var outcome = await runner.DeleteAsync(DeleteFor(disk, 2), _ => "no verified copy", CancellationToken.None);
+        Assert.Equal(OperationStatus.Blocked, outcome.Status);
+        Assert.Contains("no verified copy", outcome.Message);
+        Assert.Equal(0, ops.DeleteCalls);
+    }
+
+    [Fact]
+    public async Task Windows_and_system_partitions_can_never_be_deleted()
+    {
+        var disk = RealSystemDisk();
+        var (runner, _, ops, _) = Setup(disk, allowRealDisks: true);
+        Assert.Equal(OperationStatus.Blocked, (await runner.DeleteAsync(DeleteFor(disk, 2), _ => null, CancellationToken.None)).Status);
+        Assert.Equal(OperationStatus.Blocked, (await runner.DeleteAsync(DeleteFor(disk, 1), _ => null, CancellationToken.None)).Status);
+        Assert.Equal(0, ops.DeleteCalls);
+    }
+
+    [Fact]
+    public async Task Msr_and_recovery_partitions_can_never_be_deleted()
+    {
+        var disk = PracticeDiskWithVolume();
+        var (runner, _, ops, _) = Setup(disk);
+        var outcome = await runner.DeleteAsync(DeleteFor(disk, 1), _ => null, CancellationToken.None);   // MSR
+        Assert.Equal(OperationStatus.Blocked, outcome.Status);
+        Assert.Equal(0, ops.DeleteCalls);
+        Assert.NotNull(OperationRunner.WhyKindNotDeletable(disk.Partitions[0] with { Kind = PartitionKind.Recovery }));
+    }
+
+    [Fact]
+    public async Task Delete_on_a_real_disk_needs_real_disk_changes_switched_on()
+    {
+        var disk = RealSystemDisk();
+        var (runner, _, ops, _) = Setup(disk, allowRealDisks: false);
+        Assert.Equal(OperationStatus.Blocked, (await runner.DeleteAsync(DeleteFor(disk, 3), _ => null, CancellationToken.None)).Status);
+        Assert.Equal(0, ops.DeleteCalls);
+
+        var (runner2, _, ops2, _) = Setup(disk, allowRealDisks: true);
+        Assert.Equal(OperationStatus.Succeeded, (await runner2.DeleteAsync(DeleteFor(disk, 3), _ => null, CancellationToken.None)).Status);
+        Assert.Equal(1, ops2.DeleteCalls);
+    }
+
+    [Fact]
+    public async Task Delete_failure_is_reported_once()
+    {
+        var disk = PracticeDiskWithVolume();
+        var (runner, _, ops, _) = Setup(disk);
+        ops.FailCompletely = true;
+        var outcome = await runner.DeleteAsync(DeleteFor(disk, 2), _ => null, CancellationToken.None);
+        Assert.Equal(OperationStatus.Failed, outcome.Status);
+        Assert.Equal(1, ops.DeleteCalls);
+    }
+
+    // ---------- Drive letter ----------
+
+    [Fact]
+    public async Task Changes_a_drive_letter_and_verifies_it()
+    {
+        var disk = RealSystemDisk();
+        var (runner, inventory, ops, _) = Setup(disk, allowRealDisks: true);
+        var e = disk.Partitions[2];
+        var outcome = await runner.ChangeDriveLetterAsync(new DriveLetterOrder(0, disk.UniqueId, 3, e.OffsetBytes, "E", "K"), CancellationToken.None);
+        Assert.Equal(OperationStatus.Succeeded, outcome.Status);
+        Assert.Equal("K", inventory.Disks[0].Partitions[2].Volume!.DriveLetter);
+        Assert.Equal(1, ops.LetterCalls);
+    }
+
+    [Fact]
+    public async Task A_letter_already_in_use_is_refused()
+    {
+        var disk = RealSystemDisk();
+        var (runner, _, ops, _) = Setup(disk, allowRealDisks: true);
+        var e = disk.Partitions[2];
+        var outcome = await runner.ChangeDriveLetterAsync(new DriveLetterOrder(0, disk.UniqueId, 3, e.OffsetBytes, "E", "C"), CancellationToken.None);
+        Assert.Equal(OperationStatus.Blocked, outcome.Status);
+        Assert.Equal(0, ops.LetterCalls);
+    }
+
+    [Fact]
+    public async Task The_windows_drive_letter_never_changes()
+    {
+        var disk = RealSystemDisk();
+        var (runner, _, ops, _) = Setup(disk, allowRealDisks: true);
+        var c = disk.Partitions[1];
+        var outcome = await runner.ChangeDriveLetterAsync(new DriveLetterOrder(0, disk.UniqueId, 2, c.OffsetBytes, "C", "K"), CancellationToken.None);
+        Assert.Equal(OperationStatus.Blocked, outcome.Status);
+        Assert.Equal(0, ops.LetterCalls);
+    }
+
+    [Fact]
+    public async Task Losing_the_old_letter_without_getting_the_new_one_is_reported_as_partial()
+    {
+        var disk = RealSystemDisk();
+        var (runner, _, ops, _) = Setup(disk, allowRealDisks: true);
+        ops.LoseLetter = true;
+        var e = disk.Partitions[2];
+        var outcome = await runner.ChangeDriveLetterAsync(new DriveLetterOrder(0, disk.UniqueId, 3, e.OffsetBytes, "E", "K"), CancellationToken.None);
+        Assert.Equal(OperationStatus.PartiallyApplied, outcome.Status);
+        Assert.Contains("files are untouched", outcome.Message);
     }
 
     [Fact]

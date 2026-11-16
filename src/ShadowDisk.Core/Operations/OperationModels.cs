@@ -31,6 +31,15 @@ public sealed record ResizeOrder(
     public bool IsShrink => TargetSizeBytes < CurrentSizeBytes;
 }
 
+/// <summary>An instruction to delete one partition (and the volume on it).</summary>
+public sealed record DeleteOrder(int DiskNumber, string? DiskUniqueId, string LayoutFingerprint, int PartitionNumber, long OffsetBytes, long SizeBytes);
+
+/// <summary>An instruction to give a volume a different drive letter (or a first one).</summary>
+public sealed record DriveLetterOrder(int DiskNumber, string? DiskUniqueId, int PartitionNumber, long OffsetBytes, string? OldLetter, string NewLetter);
+
+/// <summary>What the backend reported for a single-call operation. Nothing is retried.</summary>
+public sealed record BackendResult(bool Done, string? Error);
+
 public enum OperationStatus
 {
     Succeeded,          // Every step finished and the read-back matches
@@ -74,4 +83,10 @@ public interface IDiskOperations
 
     /// <summary>Resizes one partition and its file system (shrink or extend) to exactly <paramref name="targetSizeBytes"/>.</summary>
     Task<ResizeBackendResult> ResizePartitionAsync(PhysicalDisk disk, int partitionNumber, long offsetBytes, long targetSizeBytes);
+
+    /// <summary>Deletes one partition. Everything on it is lost.</summary>
+    Task<BackendResult> DeletePartitionAsync(PhysicalDisk disk, int partitionNumber, long offsetBytes);
+
+    /// <summary>Removes <paramref name="oldLetter"/> (if any) and assigns <paramref name="newLetter"/>.</summary>
+    Task<BackendResult> SetDriveLetterAsync(PhysicalDisk disk, int partitionNumber, long offsetBytes, string? oldLetter, string newLetter);
 }

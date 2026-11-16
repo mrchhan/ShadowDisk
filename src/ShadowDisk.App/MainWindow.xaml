@@ -378,6 +378,15 @@
                 </ItemsControl.ItemTemplate>
               </ItemsControl>
 
+              <!-- Stage 5 part 2: volume actions (real disks need "Real disk changes: ON"; system partitions refused) -->
+              <StackPanel Orientation="Horizontal" Margin="0,0,0,10"
+                          Visibility="{Binding DataContext.HasVolumeActions, RelativeSource={RelativeSource AncestorType=Window}, Converter={StaticResource BoolToVis}}">
+                <Button Content="Change drive letter…" Command="{Binding DataContext.ChangeLetterCommand, RelativeSource={RelativeSource AncestorType=Window}}"
+                        ToolTip="Give this volume a different drive letter. Files are not touched." />
+                <Button Content="Delete this volume…" Command="{Binding DataContext.DeleteVolumeCommand, RelativeSource={RelativeSource AncestorType=Window}}"
+                        Foreground="#B91C1C"
+                        ToolTip="Only allowed for an empty volume, or one whose files were copied and verified with “Copy &amp; verify” in this session." />
+              </StackPanel>
               <TextBlock Text="Basic checks for possible changes"
                          FontWeight="SemiBold" Margin="0,8,0,4" />
               <ItemsControl ItemsSource="{Binding Assessments}">

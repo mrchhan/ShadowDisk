@@ -250,4 +250,138 @@ public sealed class OperationRunner(
         return Stop(OperationStatus.Failed,
             $"Windows did not resize {partition.DisplayName}. {result.Error ?? "No reason was given."} The read-back shows the disk's current state.", after);
     }
+
+    /// <summary>Partition kinds that may be deleted: ordinary data partitions only.</summary>
+    public static string? WhyKindNotDeletable(Partition p) =>
+        p.IsBoot || p.IsSystem || p.IsStartupPartition
+            ? $"{p.DisplayName} holds Windows or the files your PC needs to start. It can never be deleted by ShadowDisk."
+            : p.Kind is PartitionKind.Basic or PartitionKind.Logical
+                ? null
+                : $"{p.DisplayName} is a {p.Kind} partition. ShadowDisk only deletes ordinary data volumes.";
+
+    /// <summary>
+    /// Deletes one data partition. Besides the usual identity, layout and policy checks, <paramref name="whyNotSafe"/>
+    /// must confirm the volume's files are safe to lose (empty, or verified-copied and unchanged).
+    /// </summary>
+    public async Task<OperationOutcome> DeleteAsync(DeleteOrder order, Func<Partition, string?> whyNotSafe, CancellationToken cancellationToken)
+    {
+        var steps = new List<string>();
+        void Step(string s) { steps.Add(s); log.Info($"Delete: {s}"); }
+        OperationOutcome Stop(OperationStatus status, string message, InventorySnapshot? after = null)
+        {
+            if (status is OperationStatus.Blocked or OperationStatus.Cancelled) log.Warning($"Delete {status}: {message}");
+            else if (status == OperationStatus.Succeeded) log.Info($"Delete succeeded: {message}");
+            else log.Error($"Delete {status}: {message}");
+            return new OperationOutcome(status, message, steps, after);
+        }
+
+        InventorySnapshot before;
+        try { before = await inventory.GetSnapshotAsync(cancellationToken); }
+        catch (OperationCanceledException) { return Stop(OperationStatus.Cancelled, "Cancelled before anything was changed."); }
+        catch (Exception ex) { return Stop(OperationStatus.Blocked, $"Could not re-read the disk before starting ({ex.Message}). Nothing was changed."); }
+        Step($"Re-read the disks ({before.Disks.Count} found).");
+
+        var disk = before.Disks.FirstOrDefault(d => d.Number == order.DiskNumber);
+        if (disk is null || !string.Equals(disk.UniqueId, order.DiskUniqueId, StringComparison.Ordinal))
+            return Stop(OperationStatus.Blocked, $"Disk {order.DiskNumber} is no longer the disk that was chosen. Nothing was changed.");
+        if (LayoutFingerprint.Of(disk) != order.LayoutFingerprint)
+            return Stop(OperationStatus.Blocked, "The disk's layout changed since you chose this. Nothing was changed. Refresh and try again.");
+        var partition = disk.Partitions.FirstOrDefault(p => p.PartitionNumber == order.PartitionNumber && p.OffsetBytes == order.OffsetBytes);
+        if (partition is null || partition.SizeBytes != order.SizeBytes)
+            return Stop(OperationStatus.Blocked, "The partition is not where or what was expected. Nothing was changed.");
+        Step($"Confirmed it is the same disk, layout and partition ({partition.DisplayName}).");
+
+        if (WhyKindNotDeletable(partition) is { } kindReason)
+            return Stop(OperationStatus.Blocked, kindReason + " Nothing was changed.");
+        var notAllowed = policy.WhyNotAllowed(disk, partition, onMainsPower?.Invoke());
+        if (notAllowed.Count > 0)
+            return Stop(OperationStatus.Blocked, string.Join(" ", notAllowed) + " Nothing was changed.");
+        Step("The disk and partition pass the safety checks.");
+
+        string? unsafeReason;
+        try { unsafeReason = whyNotSafe(partition); }
+        catch (Exception ex) { unsafeReason = $"ShadowDisk could not check the volume's files ({ex.Message})."; }
+        if (unsafeReason is not null)
+            return Stop(OperationStatus.Blocked, unsafeReason + " Nothing was changed.");
+        Step("Confirmed the volume is empty, or its files have a verified copy and have not changed since.");
+
+        if (cancellationToken.IsCancellationRequested)
+            return Stop(OperationStatus.Cancelled, "Cancelled before anything was changed.");
+
+        Step($"Deleting {partition.DisplayName} ({ByteSize.Format(partition.SizeBytes)})…");
+        BackendResult result;
+        try { result = await operations.DeletePartitionAsync(disk, order.PartitionNumber, order.OffsetBytes); }
+        catch (Exception ex) { result = new BackendResult(false, ex.Message); }
+        if (result.Done) Step("Windows reported the partition as deleted.");
+        if (result.Error is { } error) Step($"Windows reported a problem: {error}");
+
+        InventorySnapshot? after = null;
+        try { after = await inventory.GetSnapshotAsync(CancellationToken.None); Step("Re-read the disk to check the result."); }
+        catch (Exception ex) { Step($"Could not re-read the disk afterwards ({ex.Message}). Check it in Windows Disk Management."); }
+
+        var stillThere = after?.Disks.FirstOrDefault(d => d.Number == order.DiskNumber)?.Partitions.Any(p => p.OffsetBytes == order.OffsetBytes);
+        if (stillThere == false)
+            return Stop(OperationStatus.Succeeded, $"{partition.DisplayName} was deleted. Its {ByteSize.Format(partition.SizeBytes)} is now unallocated space.", after);
+        if (stillThere == true)
+            return Stop(OperationStatus.Failed, $"Windows did not delete {partition.DisplayName}. {result.Error ?? "No reason was given."} The volume is still there.", after);
+        return Stop(OperationStatus.PartiallyApplied, "The result could not be confirmed. Check the disk in Windows Disk Management before doing anything else.", after);
+    }
+
+    /// <summary>Changes (or assigns) a data volume's drive letter.</summary>
+    public async Task<OperationOutcome> ChangeDriveLetterAsync(DriveLetterOrder order, CancellationToken cancellationToken)
+    {
+        var steps = new List<string>();
+        void Step(string s) { steps.Add(s); log.Info($"Drive letter: {s}"); }
+        OperationOutcome Stop(OperationStatus status, string message, InventorySnapshot? after = null)
+        {
+            if (status is OperationStatus.Blocked or OperationStatus.Cancelled) log.Warning($"Drive letter {status}: {message}");
+            else if (status == OperationStatus.Succeeded) log.Info($"Drive letter succeeded: {message}");
+            else log.Error($"Drive letter {status}: {message}");
+            return new OperationOutcome(status, message, steps, after);
+        }
+
+        var letter = order.NewLetter.Trim().TrimEnd(':').ToUpperInvariant();
+        if (letter.Length != 1 || letter[0] < 'D' || letter[0] > 'Z')
+            return Stop(OperationStatus.Blocked, "Choose a drive letter from D to Z. Nothing was changed.");
+
+        InventorySnapshot before;
+        try { before = await inventory.GetSnapshotAsync(cancellationToken); }
+        catch (OperationCanceledException) { return Stop(OperationStatus.Cancelled, "Cancelled before anything was changed."); }
+        catch (Exception ex) { return Stop(OperationStatus.Blocked, $"Could not re-read the disks ({ex.Message}). Nothing was changed."); }
+
+        var disk = before.Disks.FirstOrDefault(d => d.Number == order.DiskNumber);
+        if (disk is null || !string.Equals(disk.UniqueId, order.DiskUniqueId, StringComparison.Ordinal))
+            return Stop(OperationStatus.Blocked, "The disk is no longer the one that was chosen. Nothing was changed.");
+        var partition = disk.Partitions.FirstOrDefault(p => p.PartitionNumber == order.PartitionNumber && p.OffsetBytes == order.OffsetBytes);
+        if (partition?.Volume is not { } volume)
+            return Stop(OperationStatus.Blocked, "The volume is not where it was expected. Nothing was changed.");
+        if (!string.Equals(volume.DriveLetter, order.OldLetter, StringComparison.OrdinalIgnoreCase))
+            return Stop(OperationStatus.Blocked, "The volume's drive letter changed in the meantime. Nothing was changed. Refresh and try again.");
+        if (partition.IsBoot || partition.IsSystem || partition.IsStartupPartition)
+            return Stop(OperationStatus.Blocked, $"{partition.DisplayName} holds Windows or its start-up files; its letter must not change. Nothing was changed.");
+        var notAllowed = policy.WhyNotAllowed(disk, partition, null);
+        if (notAllowed.Count > 0)
+            return Stop(OperationStatus.Blocked, string.Join(" ", notAllowed) + " Nothing was changed.");
+        if (before.Disks.SelectMany(d => d.Partitions).Any(p => string.Equals(p.Volume?.DriveLetter, letter, StringComparison.OrdinalIgnoreCase)))
+            return Stop(OperationStatus.Blocked, $"{letter}: is already used by another volume. Nothing was changed.");
+        Step($"Checks passed: {(order.OldLetter is { } o ? o + ":" : "the volume")} → {letter}:.");
+
+        BackendResult result;
+        try { result = await operations.SetDriveLetterAsync(disk, order.PartitionNumber, order.OffsetBytes, order.OldLetter, letter); }
+        catch (Exception ex) { result = new BackendResult(false, ex.Message); }
+        if (result.Error is { } error) Step($"Windows reported a problem: {error}");
+
+        InventorySnapshot? after = null;
+        try { after = await inventory.GetSnapshotAsync(CancellationToken.None); Step("Re-read the disks to check the result."); }
+        catch (Exception ex) { Step($"Could not re-read the disks afterwards ({ex.Message})."); }
+        var now = after?.Disks.FirstOrDefault(d => d.Number == order.DiskNumber)?.Partitions
+            .FirstOrDefault(p => p.OffsetBytes == order.OffsetBytes)?.Volume?.DriveLetter;
+
+        if (string.Equals(now, letter, StringComparison.OrdinalIgnoreCase))
+            return Stop(OperationStatus.Succeeded, $"The volume is now {letter}:.", after);
+        if (now is null && order.OldLetter is not null)
+            return Stop(OperationStatus.PartiallyApplied,
+                $"The old letter was removed but {letter}: was not assigned. The volume has no letter now; give it one with “Change drive letter”. Its files are untouched.", after);
+        return Stop(OperationStatus.Failed, $"Windows did not change the letter. {result.Error ?? "No reason was given."}", after);
+    }
 }

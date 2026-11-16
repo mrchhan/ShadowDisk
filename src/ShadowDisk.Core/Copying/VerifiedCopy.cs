@@ -88,6 +88,8 @@ public sealed class VerifiedCopy
         var failures = new List<string>();
         var skipped = new List<string>();
 
+        var startedAt = DateTimeOffset.UtcNow;
+
         // ---------- Checks before anything is written ----------
         if (!Directory.Exists(sourceRoot))
             return Refuse($"The source folder {sourceRoot} does not exist.");
@@ -227,6 +229,9 @@ public sealed class VerifiedCopy
         if (failures.Count == 0 && verified == files.Count)
         {
             try { File.Delete(Path.Combine(dst, UnfinishedMarker)); } catch (IOException) { }
+            // On resume, files kept from an earlier run were only re-checked now, so the copy covers the state
+            // as of when THIS run started; any later change is detected by DeleteSafety.
+            VerifiedCopyRegistry.Record(new VerifiedCopyRecord(src, dst, startedAt, files.Count, totalBytes));
             var msg = $"All {files.Count} files ({ByteSize.Format(totalBytes)}) were copied and verified: every checksum matches." +
                       (skippedExisting > 0 ? $" {skippedExisting:N0} were already copied by the earlier run." : "");
             Log(msg);

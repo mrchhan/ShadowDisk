@@ -135,6 +135,28 @@ back and compares its SHA-256 checksum with the checksum taken while reading the
 copy being caught, refusing a non-empty destination, not enough space, destination inside source,
 cancelling, skipped system folders, links not followed, and progress reporting.
 
+## Delete volume (Stage 5, part 2 — built)
+
+The first operation that removes data, so it has the strictest rules:
+
+* Only ordinary data partitions. Never the Windows volume, the system/start-up partition (System
+  Reserved, EFI), MSR, Recovery, unrecognised or dynamic-disk partitions — checked in the runner AND,
+  independently, by the Windows backend (`IsBoot`/`IsSystem`) on every disk.
+* Real disks need "Real disk changes: ON"; practice disks don't.
+* **Files must be safe to lose.** ShadowDisk scans the volume and allows deletion only if it holds no
+  user files, or if a **verified copy of that drive was made with Copy & verify in this session** and
+  no file or folder on it was created or modified after that copy started. A volume without a drive
+  letter can't be scanned, so it is refused.
+* Confirmation: tick that the verified copy opens, and type `DELETE <letter>` (e.g. `DELETE G`).
+* One call to `MSFT_Partition.DeleteObject`; success only when the read-back shows the partition gone.
+
+## Change drive letter (Stage 5, part 2 — built)
+
+`MSFT_Partition.RemoveAccessPath` (old letter) then `AddAccessPath` (new letter). Files are not touched.
+Letters D–Z only, never one already in use. The Windows volume and system partitions are refused.
+If the old letter is removed but the new one can't be added, the result is "partly applied" and the
+volume simply has no letter until one is given.
+
 ## Planned: Give space to C: (Stage 5)
 
 **Status:** design only. Nothing below is built. It will be built and proven on practice disks first.

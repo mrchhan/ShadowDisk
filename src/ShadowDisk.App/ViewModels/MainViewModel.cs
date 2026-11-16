@@ -3,6 +3,8 @@ using System.IO;
 using System.Windows;
 using Microsoft.Win32;
 using ShadowDisk.App.Services;
+using ShadowDisk.Core;
+using ShadowDisk.Core.Copying;
 using ShadowDisk.Core.Inventory;
 using ShadowDisk.Core.Layout;
 using ShadowDisk.Core.Logging;
@@ -49,6 +51,8 @@ public sealed class MainViewModel : ObservableObject
         CreatePracticeDiskCommand = new RelayCommand(() => _ = CreatePracticeDiskAsync(), () => !IsBusy);
         ToggleRealDiskChangesCommand = new RelayCommand(ToggleRealDiskChanges, () => !IsBusy);
         OpenCopyVerifyCommand = new RelayCommand(OpenCopyVerify, () => !IsBusy && _snapshot is { IsSimulated: false });
+        DeleteVolumeCommand = new RelayCommand(() => _ = DeleteVolumeAsync(), () => !IsBusy && HasVolumeActions);
+        ChangeLetterCommand = new RelayCommand(() => _ = ChangeLetterAsync(), () => !IsBusy && HasVolumeActions);
         RemovePracticeDisksCommand = new RelayCommand(() => _ = RemovePracticeDisksAsync(), () => !IsBusy);
 
         foreach (var e in AppServices.Log.Entries) LogEntries.Add(e);
@@ -74,6 +78,106 @@ public sealed class MainViewModel : ObservableObject
     public RelayCommand CreatePracticeDiskCommand { get; }
     public RelayCommand ToggleRealDiskChangesCommand { get; }
     public RelayCommand OpenCopyVerifyCommand { get; }
+    public RelayCommand DeleteVolumeCommand { get; }
+    public RelayCommand ChangeLetterCommand { get; }
+
+    /// <summary>Delete / change letter apply to a real (not demo) data partition with a volume.</summary>
+    public bool HasVolumeActions => !IsSimulated && SelectedRow?.Region.Partition is { Volume: not null };
+
+    private static void ShowOutcome(OperationOutcome outcome)
+    {
+        var title = outcome.Status switch
+        {
+            OperationStatus.Succeeded => "Change applied",
+            OperationStatus.PartiallyApplied => "Change only partly applied",
+            OperationStatus.Failed => "Change failed",
+            OperationStatus.Cancelled => "Change cancelled",
+            _ => "Change not started",
+        };
+        MessageBox.Show(outcome.Message + "\n\nWhat happened:\n• " + string.Join("\n• ", outcome.Steps), "ShadowDisk — " + title,
+            MessageBoxButton.OK, outcome.Status == OperationStatus.Succeeded ? MessageBoxImage.Information : MessageBoxImage.Warning);
+    }
+
+    private OperationRunner NewRunner() => new(new WindowsStorageInventory(), new WindowsDiskOperations(_policy), _policy,
+        AppServices.Log, new WindowsPartitionLimitsProvider(), PowerStatus.IsOnMainsPower);
+
+    private static string? CheckFiles(Partition p) =>
+        p.Volume?.DriveLetter is { Length: > 0 } l
+            ? DeleteSafety.WhyNotSafeToDelete($@"{l}:\", VerifiedCopyRegistry.Find($@"{l}:\"))
+            : "The volume has no drive letter, so ShadowDisk can't check its files. Give it a letter first.";
+
+    private async Task DeleteVolumeAsync()
+    {
+        if (SelectedDisk?.Disk is not { } disk || SelectedRow?.Region.Partition is not { Volume: { } volume } p) return;
+        void Info(string text) => MessageBox.Show(text, "ShadowDisk — delete volume", MessageBoxButton.OK, MessageBoxImage.Information);
+
+        if (!IsElevated) { Info("Deleting a volume needs administrator rights. Click “Restart as administrator” first."); return; }
+        if (OperationRunner.WhyKindNotDeletable(p) is { } kind) { Info(kind); return; }
+        var policyReasons = _policy.WhyNotAllowed(disk, p, PowerStatus.IsOnMainsPower());
+        if (policyReasons.Count > 0) { Info(string.Join("\n\n", policyReasons)); return; }
+
+        IsBusy = true;
+        StatusText = $"Checking the files on {p.DisplayName}…";
+        string? unsafeReason;
+        try { unsafeReason = await Task.Run(() => CheckFiles(p)); }
+        finally { IsBusy = false; StatusText = ""; }
+        if (unsafeReason is not null) { Info(unsafeReason); return; }
+
+        var letter = volume.DriveLetter!;
+        var copy = VerifiedCopyRegistry.Find($@"{letter}:\");
+        var facts = new List<string>
+        {
+            $"Disk {disk.Number} — {disk.FriendlyName}",
+            $"Volume: {p.DisplayName}{(volume.Label is { } lb ? $" ({lb})" : "")}, {ByteSize.FormatWithExact(p.SizeBytes)}",
+            copy is not null
+                ? $"Its files ({copy.Files:N0} files, {ByteSize.Format(copy.Bytes)}) have a verified copy in: {copy.DestinationFolder}"
+                : "The volume holds no files of yours.",
+            "After deleting, its space becomes unallocated. This cannot be undone.",
+        };
+        var confirmText = $"DELETE {letter}";
+        var dialog = new ConfirmDeleteWindow($"This permanently deletes {letter}: and everything on it.", facts, confirmText,
+            copy is not null ? $"I have checked the verified copy in {copy.DestinationFolder} and can open my files there."
+                             : $"I understand {letter}: will be removed.")
+        { Owner = Application.Current.MainWindow };
+        if (dialog.ShowDialog() != true) { AppServices.Log.Info("Delete: cancelled at the confirmation screen. Nothing was changed."); return; }
+
+        IsBusy = true;
+        StatusText = $"Deleting {letter}:…";
+        OperationOutcome outcome;
+        try
+        {
+            outcome = await NewRunner().DeleteAsync(
+                new DeleteOrder(disk.Number, disk.UniqueId, LayoutFingerprint.Of(disk), p.PartitionNumber, p.OffsetBytes, p.SizeBytes),
+                CheckFiles, CancellationToken.None);
+        }
+        finally { IsBusy = false; }
+        ShowOutcome(outcome);
+        await RefreshAsync();
+    }
+
+    private async Task ChangeLetterAsync()
+    {
+        if (SelectedDisk?.Disk is not { } disk || SelectedRow?.Region.Partition is not { Volume: { } volume } p) return;
+        if (!IsElevated)
+        {
+            MessageBox.Show("Changing a drive letter needs administrator rights. Click “Restart as administrator” first.", "ShadowDisk",
+                MessageBoxButton.OK, MessageBoxImage.Information);
+            return;
+        }
+        var dialog = new ChooseLetterWindow(p.DisplayName, volume.DriveLetter) { Owner = Application.Current.MainWindow };
+        if (dialog.ShowDialog() != true || dialog.ChosenLetter is not { } letter) return;
+
+        IsBusy = true;
+        OperationOutcome outcome;
+        try
+        {
+            outcome = await NewRunner().ChangeDriveLetterAsync(
+                new DriveLetterOrder(disk.Number, disk.UniqueId, p.PartitionNumber, p.OffsetBytes, volume.DriveLetter, letter), CancellationToken.None);
+        }
+        finally { IsBusy = false; }
+        ShowOutcome(outcome);
+        await RefreshAsync();
+    }
 
     private void OpenCopyVerify()
     {
@@ -205,6 +309,7 @@ public sealed class MainViewModel : ObservableObject
                 OnPropertyChanged(nameof(SelectedRegion));
             }
             UpdatePlan();
+            OnPropertyChanged(nameof(HasVolumeActions));
         }
     }
 
@@ -220,6 +325,7 @@ public sealed class MainViewModel : ObservableObject
                 _selectedRow = row;
                 OnPropertyChanged(nameof(SelectedRow));
                 UpdatePlan();
+                OnPropertyChanged(nameof(HasVolumeActions));
             }
         }
     }

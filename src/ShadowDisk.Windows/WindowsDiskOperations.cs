@@ -21,6 +21,56 @@ public sealed class WindowsDiskOperations(OperationPolicy policy) : IDiskOperati
     public Task<CreateVolumeBackendResult> CreateVolumeAsync(PhysicalDisk disk, long offsetBytes, long sizeBytes, string volumeLabel) =>
         Task.Run(() => CreateVolume(disk, offsetBytes, sizeBytes, volumeLabel));
 
+    public Task<BackendResult> DeletePartitionAsync(PhysicalDisk disk, int partitionNumber, long offsetBytes) =>
+        Task.Run(() => Delete(disk, partitionNumber, offsetBytes));
+
+    public Task<BackendResult> SetDriveLetterAsync(PhysicalDisk disk, int partitionNumber, long offsetBytes, string? oldLetter, string newLetter) =>
+        Task.Run(() => SetLetter(disk, partitionNumber, offsetBytes, oldLetter, newLetter));
+
+    /// <summary>One call to MSFT_Partition.DeleteObject (the API behind Remove-Partition).</summary>
+    private BackendResult Delete(PhysicalDisk disk, int partitionNumber, long offsetBytes)
+    {
+        if (!Elevation.IsElevated()) return new(false, "Administrator rights are needed.");
+        var refusal = CheckLiveDisk(disk, partitionNumber, out var scope);
+        if (refusal is not null) return new(false, refusal);
+
+        using var partition = Wmi.Partition(scope!, disk.Number, partitionNumber);
+        if (partition is null) return new(false, "The partition is no longer present.");
+        if (Convert.ToInt64(partition["Offset"], CultureInfo.InvariantCulture) != offsetBytes)
+            return new(false, "Refused: the partition is not at the expected position on the disk.");
+        // Independent of the runner: never delete a partition Windows marks as boot or system, on ANY disk.
+        if (Wmi.ToBool(partition["IsBoot"]) || Wmi.ToBool(partition["IsSystem"]))
+            return new(false, "Refused: Windows reports this partition as its boot or system partition.");
+
+        var (code, _) = Wmi.Invoke(partition, "DeleteObject");
+        return code == 0 ? new(true, null) : new(false, "Deleting failed: " + Wmi.Explain(code));
+    }
+
+    /// <summary>MSFT_Partition.RemoveAccessPath (old letter) then AddAccessPath (new letter). Files are not touched.</summary>
+    private BackendResult SetLetter(PhysicalDisk disk, int partitionNumber, long offsetBytes, string? oldLetter, string newLetter)
+    {
+        if (!Elevation.IsElevated()) return new(false, "Administrator rights are needed.");
+        var refusal = CheckLiveDisk(disk, partitionNumber, out var scope);
+        if (refusal is not null) return new(false, refusal);
+
+        using var partition = Wmi.Partition(scope!, disk.Number, partitionNumber);
+        if (partition is null) return new(false, "The partition is no longer present.");
+        if (Convert.ToInt64(partition["Offset"], CultureInfo.InvariantCulture) != offsetBytes)
+            return new(false, "Refused: the partition is not at the expected position on the disk.");
+        if (Wmi.ToBool(partition["IsBoot"]) || Wmi.ToBool(partition["IsSystem"]))
+            return new(false, "Refused: this is Windows' boot or system partition.");
+        if (DriveInfo.GetDrives().Any(d => string.Equals(d.Name.TrimEnd('\\', ':'), newLetter, StringComparison.OrdinalIgnoreCase)))
+            return new(false, $"{newLetter}: is already in use.");
+
+        if (oldLetter is { Length: > 0 })
+        {
+            var (removeCode, _) = Wmi.Invoke(partition, "RemoveAccessPath", p => p["AccessPath"] = $@"{oldLetter}:\");
+            if (removeCode != 0) return new(false, "Removing the old letter failed: " + Wmi.Explain(removeCode));
+        }
+        var (addCode, _) = Wmi.Invoke(partition, "AddAccessPath", p => p["AccessPath"] = $@"{newLetter}:\");
+        return addCode == 0 ? new(true, null) : new(false, "Assigning the new letter failed: " + Wmi.Explain(addCode));
+    }
+
     public Task<ResizeBackendResult> ResizePartitionAsync(PhysicalDisk disk, int partitionNumber, long offsetBytes, long targetSizeBytes) =>
         Task.Run(() => Resize(disk, partitionNumber, offsetBytes, targetSizeBytes));
 
