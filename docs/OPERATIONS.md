@@ -233,6 +233,34 @@ disks; reagentc is only used for the real Windows disk.
 
 **Time:** dominated by copying E:'s used data twice (copy, then checksum).
 
+**Programs installed on E:** files are copied one by one and E: keeps its letter, but Windows file permissions
+(ACLs), hard links and similar file-system details are not copied. Programs installed on E: may need repairing or
+reinstalling afterwards. Documents, photos and other plain files are not affected. The wizard says this before
+you start.
+
+## Disk health and surface scan (Stage 4 — built, read-only)
+
+**Disk health…** (toolbar) opens a window for the selected disk.
+
+**What the drive reports** — read from Windows' `MSFT_PhysicalDisk` and `MSFT_StorageReliabilityCounter`
+(the data behind `Get-StorageReliabilityCounter`): Windows' health status, temperature, hours powered on,
+read/write errors (total and uncorrected), wear (SSDs) and start/stop cycles. ShadowDisk turns them into a plain
+verdict: *No problems reported*, *Worth keeping an eye on*, or *Needs attention — back up now* (for example
+uncorrected errors, Windows reporting the drive Unhealthy, or wear of 90% or more). Many RAID controllers and USB
+adapters don't pass these counters on; that is shown as "not reported", not as a problem. **This is the drive's own
+report, not a scan.**
+
+**Surface scan** — reads the whole disk once through `\\.\PhysicalDriveN`, opened **read-only** and without the
+Windows cache, 1 MiB at a time, and times every read:
+* **Unreadable** — Windows returned an error (for example a CRC error). That area is **never read again**: re-reading
+  weak areas is what stresses a failing drive most.
+* **Slow** — the read took 500 ms or more, often a sign the drive is struggling with that area.
+* After **20 unreadable areas** the scan stops by itself and says to copy important files off the disk instead.
+* Stop any time; **Continue scan** carries on from where it stopped (while the window stays open).
+* Each problem shows which volume it is in. **Save results…** writes a text report.
+
+Nothing is ever written or repaired. A clean scan does not guarantee the disk won't fail later.
+
 ## Not yet enabled
 * Shrinking, deleting or relettering the Windows volume (C:); any change to System Reserved, EFI or MSR.
 * Resuming the give-space wizard after ShadowDisk is closed (finish the remaining steps by hand, or start again).

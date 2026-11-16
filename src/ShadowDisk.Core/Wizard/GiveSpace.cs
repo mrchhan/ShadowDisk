@@ -147,6 +147,11 @@ public static class GiveSpacePlanner
         if (problems.Count > 0 || (donor is null && rec is null))
             return new GiveSpacePlan(layout.Disk, target, donor, 0, 0, 0, 0, 0, problems, rec, 0, notes);
 
+        if (donor is not null)
+            notes.Add($"{donor.DisplayName}'s files are copied one by one and keep the letter {donor.DisplayName}, but Windows file " +
+                      $"permissions are not copied. Programs installed on {donor.DisplayName} may need repairing or reinstalling afterwards; " +
+                      "documents, photos and other plain files are not affected.");
+
         var used = donor?.Volume!.UsedBytes ?? 0;
         var needed = donor is null ? 0 : Math.Max(PlanLimits.MinimumNewVolume, PlanLimits.AlignUp(used + Math.Max(used / 10, 256 * ByteSize.MiB)));
         var newRec = rec is null ? 0 : Math.Min(OperationRunner.MaxMovableRecoveryBytes, Math.Max(MinimumNewRecovery, PlanLimits.AlignUp(rec.SizeBytes)));

@@ -53,6 +53,7 @@ public sealed class MainViewModel : ObservableObject
         CreatePracticeDiskCommand = new RelayCommand(() => _ = CreatePracticeDiskAsync(), () => !IsBusy);
         ToggleRealDiskChangesCommand = new RelayCommand(ToggleRealDiskChanges, () => !IsBusy);
         OpenCopyVerifyCommand = new RelayCommand(OpenCopyVerify, () => !IsBusy && _snapshot is { IsSimulated: false });
+        DiskHealthCommand = new RelayCommand(OpenDiskHealth, () => !IsBusy && !IsSimulated && SelectedDisk is not null);
         DeleteVolumeCommand = new RelayCommand(() => _ = DeleteVolumeAsync(), () => !IsBusy && HasVolumeActions);
         ChangeLetterCommand = new RelayCommand(() => _ = ChangeLetterAsync(), () => !IsBusy && HasVolumeActions);
         GiveSpaceCommand = new RelayCommand(() => _ = GiveSpaceAsync(), () => !IsBusy && HasVolumeActions);
@@ -81,6 +82,14 @@ public sealed class MainViewModel : ObservableObject
     public RelayCommand CreatePracticeDiskCommand { get; }
     public RelayCommand ToggleRealDiskChangesCommand { get; }
     public RelayCommand OpenCopyVerifyCommand { get; }
+    public RelayCommand DiskHealthCommand { get; }
+
+    /// <summary>Stage 4: what the selected drive reports about itself, plus an optional read-only surface scan.</summary>
+    private void OpenDiskHealth()
+    {
+        if (SelectedDisk is not { } item) return;
+        new HealthWindow(item.Disk) { Owner = Application.Current.MainWindow }.ShowDialog();
+    }
     public RelayCommand DeleteVolumeCommand { get; }
     public RelayCommand ChangeLetterCommand { get; }
     public RelayCommand GiveSpaceCommand { get; }

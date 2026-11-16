@@ -32,6 +32,6 @@ supports, plus a verified file copy, and moves the Recovery partition with Micro
 See [OPERATIONS.md](OPERATIONS.md#give-space-to-c-stage-5-part-4--built).
 
 ## Stage 4: Health, polish and recovery guidance
-- Detailed drive-health counters (`MSFT_StorageReliabilityCounter`), clearly separate from scans
-- Optional read-only surface scan: cancellable, with a warning about stressing failing drives
+- ✅ Detailed drive-health counters (`MSFT_StorageReliabilityCounter`), clearly separate from scans
+- ✅ Optional read-only surface scan: cancellable, with a warning about stressing failing drives
 - Accessibility review, dark mode, code-signed installer, recovery guidance pages

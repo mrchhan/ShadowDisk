@@ -23,9 +23,10 @@ will never claim otherwise.
    disk state is read back and shown.
 8. **Protected partitions stay protected.** EFI System and Microsoft Reserved partitions are never
    offered for changes. Dynamic disks are not supported at all.
-9. **Health is not a scan.** The status Windows reports is shown as exactly that. Any future
-   surface scan will be read-only, cancellable and come with a clear warning that scanning can
-   stress a failing drive.
+9. **Health is not a scan.** The status Windows reports is shown as exactly that. The surface scan
+   is read-only (the disk is opened for reading only), cancellable, never re-reads an area that
+   failed, stops by itself after many unreadable areas, and warns that scanning can stress a
+   failing drive.
 10. **Development never touches real disks.** Tests use simulated disks or disposable virtual disks.
 
 ## Stage 3 (in progress)

@@ -63,6 +63,8 @@
                 ToolTip="Creates a small virtual disk file for safely trying real changes. Needs administrator rights." />
         <Button Content="Remove practice disks" Command="{Binding RemovePracticeDisksCommand}"
                 ToolTip="Detaches and deletes ShadowDisk's practice disk files." />
+        <Button Content="Disk health…" Command="{Binding DiskHealthCommand}"
+                ToolTip="What the selected drive reports about its health, and an optional read-only surface scan for bad sectors." />
         <Button Content="Copy &amp; verify…" Command="{Binding OpenCopyVerifyCommand}"
                 ToolTip="Copy a drive's files into a new folder on another drive and check every file's checksum. Never deletes anything." />
         <Button Content="{Binding RealDiskButtonText}" Command="{Binding ToggleRealDiskChangesCommand}"

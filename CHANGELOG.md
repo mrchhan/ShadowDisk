@@ -11,6 +11,9 @@
   and an explanation when a volume can't be extended (e.g. Recovery sits after C:).
 - **Copy & verify** (Stage 5 part 1): copy a drive's files to a new folder on another drive and check
   every file's SHA-256 checksum; never overwrites or deletes.
+- **Disk health** (Stage 4): the drive's own health counters with a plain verdict, and a read-only surface
+  scan for bad (unreadable) and slow areas, with a map, stop/continue, and a saved text report.
+- The give-space wizard now warns that file permissions aren't copied, so programs on the moved drive may need repair.
 - **Give space to C:** (Stage 5 part 4): the give-space wizard can also move a Recovery partition — Windows
   Recovery off with reagentc, recreate the Recovery partition (≥ 1 GiB) after the extended volume, back on.
   Extending the Windows volume is now allowed (only extending). Full MBR disks remove Recovery first.
