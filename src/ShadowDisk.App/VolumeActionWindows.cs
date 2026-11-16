@@ -20,19 +20,21 @@ public sealed class ConfirmDeleteWindow : Window
         ResizeMode = ResizeMode.NoResize;
         WindowStartupLocation = WindowStartupLocation.CenterOwner;
         FontFamily = new FontFamily("Segoe UI");
+        Theme.Apply(this);
+        Icon = Application.Current.MainWindow?.Icon;
         FontSize = 13;
 
         var panel = new StackPanel { Margin = new Thickness(20) };
         panel.Children.Add(new Border
         {
-            Background = new SolidColorBrush(Color.FromRgb(0xFE, 0xE2, 0xE2)),
-            BorderBrush = new SolidColorBrush(Color.FromRgb(0xB9, 0x1C, 0x1C)),
+            Background = Theme.Get("DangerBackBrush"),
+            BorderBrush = Theme.Danger,
             BorderThickness = new Thickness(1),
-            CornerRadius = new CornerRadius(4),
+            CornerRadius = new CornerRadius(8),
             Padding = new Thickness(10, 8, 10, 8),
             Margin = new Thickness(0, 0, 0, 12),
             Child = new TextBlock { Text = heading, FontWeight = FontWeights.SemiBold, TextWrapping = TextWrapping.Wrap,
-                                    Foreground = new SolidColorBrush(Color.FromRgb(0x7F, 0x1D, 0x1D)) },
+                                    Foreground = Theme.Get("DangerTextBrush") },
         });
         foreach (var fact in facts)
             panel.Children.Add(new TextBlock { Text = fact, TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 2, 0, 2) });
@@ -47,7 +49,7 @@ public sealed class ConfirmDeleteWindow : Window
         var buttons = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Right };
         var cancel = new Button { Content = "Cancel", IsCancel = true, IsDefault = true, MinWidth = 100, Padding = new Thickness(12, 5, 12, 5), Margin = new Thickness(0, 0, 8, 0) };
         var ok = new Button { Content = buttonText, MinWidth = 140, Padding = new Thickness(12, 5, 12, 5), IsEnabled = false,
-                              Background = new SolidColorBrush(Color.FromRgb(0xB9, 0x1C, 0x1C)), Foreground = Brushes.White };
+                              Style = Theme.StyleFor("DangerButton") };
         cancel.Click += (_, _) => DialogResult = false;
         ok.Click += (_, _) => DialogResult = true;
         void Update() => ok.IsEnabled = check.IsChecked == true && string.Equals(box.Text.Trim(), confirmText, StringComparison.OrdinalIgnoreCase);
@@ -83,6 +85,8 @@ public sealed class ChooseLetterWindow : Window
         ResizeMode = ResizeMode.NoResize;
         WindowStartupLocation = WindowStartupLocation.CenterOwner;
         FontFamily = new FontFamily("Segoe UI");
+        Theme.Apply(this);
+        Icon = Application.Current.MainWindow?.Icon;
         FontSize = 13;
 
         var panel = new StackPanel { Margin = new Thickness(20) };

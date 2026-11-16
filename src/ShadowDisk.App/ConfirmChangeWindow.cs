@@ -38,16 +38,18 @@ public sealed class ConfirmChangeWindow : Window
         ResizeMode = ResizeMode.NoResize;
         WindowStartupLocation = WindowStartupLocation.CenterOwner;
         FontFamily = new FontFamily("Segoe UI");
+        Theme.Apply(this);
+        Icon = Application.Current.MainWindow?.Icon;
         FontSize = 13;
 
         var panel = new StackPanel { Margin = new Thickness(20) };
 
         panel.Children.Add(new Border
         {
-            Background = new SolidColorBrush(Color.FromRgb(0xFE, 0xE2, 0xE2)),
-            BorderBrush = new SolidColorBrush(Color.FromRgb(0xB9, 0x1C, 0x1C)),
+            Background = Theme.Get("DangerBackBrush"),
+            BorderBrush = Theme.Danger,
             BorderThickness = new Thickness(1),
-            CornerRadius = new CornerRadius(4),
+            CornerRadius = new CornerRadius(8),
             Padding = new Thickness(10, 8, 10, 8),
             Margin = new Thickness(0, 0, 0, 14),
             Child = new TextBlock
@@ -56,7 +58,7 @@ public sealed class ConfirmChangeWindow : Window
                     ? "This is a REAL change. Unlike a preview, it will write to the practice disk below."
                     : $"This is a REAL change to your REAL disk ({disk.FriendlyName}), not a practice disk. Unlike a preview, it will write to it.",
                 FontWeight = FontWeights.SemiBold,
-                Foreground = new SolidColorBrush(Color.FromRgb(0x7F, 0x1D, 0x1D)),
+                Foreground = Theme.Get("DangerTextBrush"),
                 TextWrapping = TextWrapping.Wrap,
             },
         });
@@ -99,8 +101,7 @@ public sealed class ConfirmChangeWindow : Window
             MinWidth = 140,
             Padding = new Thickness(12, 5, 12, 5),
             IsEnabled = false,
-            Background = new SolidColorBrush(Color.FromRgb(0xB9, 0x1C, 0x1C)),
-            Foreground = Brushes.White,
+            Style = Theme.StyleFor("DangerButton"),
         };
         cancel.Click += (_, _) => DialogResult = false;
         apply.Click += (_, _) => DialogResult = true;
@@ -127,6 +128,6 @@ public sealed class ConfirmChangeWindow : Window
             Text = text,
             TextWrapping = TextWrapping.Wrap,
             Margin = new Thickness(0, 1, 0, 1),
-            Foreground = muted ? new SolidColorBrush(Color.FromRgb(0x4B, 0x55, 0x63)) : Brushes.Black,
+            Foreground = muted ? Theme.Muted : Theme.Text,
         };
 }

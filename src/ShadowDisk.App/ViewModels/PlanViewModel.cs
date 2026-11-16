@@ -23,9 +23,9 @@ public sealed class PlanCheckViewModel(PlanCheck check)
     };
     public string Color => check.Outcome switch
     {
-        CheckOutcome.Passed => "#047857",
-        CheckOutcome.Warning => "#B45309",
-        _ => "#B91C1C",
+        CheckOutcome.Passed => Theme.SuccessHex,
+        CheckOutcome.Warning => Theme.WarningHex,
+        _ => Theme.DangerHex,
     };
 }
 
@@ -262,7 +262,7 @@ public sealed class PlanViewModel : ObservableObject
     public string VerdictText => Result is null ? "" : Result.IsValid
         ? "This plan passes the checks. It is a preview only: nothing will be changed."
         : "This plan is blocked. Adjust the size or see the checks below.";
-    public string VerdictColor => Result?.IsValid == true ? "#047857" : "#B91C1C";
+    public string VerdictColor => Result?.IsValid == true ? Theme.SuccessHex : Theme.DangerHex;
 
     private void SetTarget(long bytes, bool updateText)
     {

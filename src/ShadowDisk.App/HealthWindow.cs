@@ -41,7 +41,7 @@ public sealed class HealthWindow : Window
     private long _resumeFrom;
     private bool _scanning;
 
-    private static Brush Muted => new SolidColorBrush(Color.FromRgb(0x4B, 0x55, 0x63));
+    private static Brush Muted => Theme.Muted;
     private static Button Btn(string text) => new() { Content = text, MinWidth = 110, Padding = new Thickness(12, 5, 12, 5), Margin = new Thickness(0, 0, 8, 0) };
 
     public HealthWindow(PhysicalDisk disk)
@@ -54,10 +54,19 @@ public sealed class HealthWindow : Window
         ResizeMode = ResizeMode.NoResize;
         WindowStartupLocation = WindowStartupLocation.CenterOwner;
         FontFamily = new FontFamily("Segoe UI");
+        Theme.Apply(this);
+        Icon = Application.Current.MainWindow?.Icon;
         FontSize = 13;
 
         var panel = new StackPanel { Margin = new Thickness(20) };
-        panel.Children.Add(new TextBlock { Text = $"Disk {disk.Number} — {disk.FriendlyName} · {ByteSize.Format(disk.SizeBytes)}", FontSize = 16, FontWeight = FontWeights.SemiBold });
+        var title = new StackPanel { Orientation = Orientation.Horizontal };
+        title.Children.Add(new Controls.SpinningDisk { Width = 34, Height = 34, FollowsActivity = true, Margin = new Thickness(0, 0, 12, 0) });
+        title.Children.Add(new TextBlock
+        {
+            Text = $"Disk {disk.Number} — {disk.FriendlyName} · {ByteSize.Format(disk.SizeBytes)}", FontSize = 16, FontWeight = FontWeights.SemiBold,
+            VerticalAlignment = VerticalAlignment.Center,
+        });
+        panel.Children.Add(title);
 
         panel.Children.Add(Heading("What the drive reports"));
         _verdict.Text = "Reading…";
@@ -123,7 +132,7 @@ public sealed class HealthWindow : Window
         BlockState.Good => new SolidColorBrush(Color.FromRgb(0x34, 0xA8, 0x53)),
         BlockState.Slow => new SolidColorBrush(Color.FromRgb(0xF5, 0x9E, 0x0B)),
         BlockState.Unreadable => new SolidColorBrush(Color.FromRgb(0xDC, 0x26, 0x26)),
-        _ => new SolidColorBrush(Color.FromRgb(0xE5, 0xE7, 0xEB)),
+        _ => Theme.Get("PanelAltBrush"),
     };
 
     private static StackPanel Legend()
@@ -154,9 +163,9 @@ public sealed class HealthWindow : Window
         _verdict.Text = a.Headline;
         _verdict.Foreground = a.Verdict switch
         {
-            HealthVerdict.Concern => new SolidColorBrush(Color.FromRgb(0xB9, 0x1C, 0x1C)),
-            HealthVerdict.Watch => new SolidColorBrush(Color.FromRgb(0xB4, 0x53, 0x09)),
-            HealthVerdict.Good => new SolidColorBrush(Color.FromRgb(0x04, 0x78, 0x57)),
+            HealthVerdict.Concern => Theme.Danger,
+            HealthVerdict.Watch => Theme.Warning,
+            HealthVerdict.Good => Theme.Success,
             _ => Muted,
         };
         foreach (var f in a.Findings)
@@ -230,6 +239,7 @@ public sealed class HealthWindow : Window
         }
 
         _scanning = true;
+        var activity = Controls.DiskActivity.Begin();   // the platters spin up and the arm seeks while scanning
         _start.IsEnabled = false;
         _stop.IsEnabled = true;
         _save.IsEnabled = false;
@@ -254,6 +264,7 @@ public sealed class HealthWindow : Window
         finally
         {
             reader.Dispose();
+            activity.Dispose();
             _scanning = false;
             cts.Dispose();
             _cts = null;
@@ -264,7 +275,7 @@ public sealed class HealthWindow : Window
         _bar.Value = result.TotalBytes == 0 ? 1 : (double)result.ScannedUpToBytes / result.TotalBytes;
         _scanStatus.Text = result.Message;
         _scanStatus.Foreground = result.Problems.Any(p => p.Kind == ScanProblemKind.Unreadable) || result.Status == ScanStatus.StoppedTooManyErrors
-            ? new SolidColorBrush(Color.FromRgb(0xB9, 0x1C, 0x1C)) : Brushes.Black;
+            ? Theme.Danger : Theme.Text;
         ShowMap();
         ShowProblems();
         _start.Content = _resumeFrom > 0 ? "Continue scan" : "Scan again…";
@@ -274,10 +285,19 @@ public sealed class HealthWindow : Window
         AppServices.Log.Info($"Surface scan of Disk {_disk.Number}: {result.Status}. {result.Message}");
     }
 
+    private BlockState[] _shown = [];
+
     private void ShowMap()
     {
         var states = _scanMap.Snapshot();
-        for (var i = 0; i < _cells.Length && i < states.Length; i++) _cells[i].Background = CellBrush(states[i]);
+        if (_shown.Length != states.Length) _shown = new BlockState[states.Length];
+        for (var i = 0; i < _cells.Length && i < states.Length; i++)
+        {
+            if (states[i] == _shown[i]) continue;
+            _cells[i].Background = CellBrush(states[i]);
+            if (states[i] != BlockState.NotScanned) Theme.Flash(_cells[i]);   // a just-read cell lights up
+            _shown[i] = states[i];
+        }
     }
 
     private void ShowProblems()

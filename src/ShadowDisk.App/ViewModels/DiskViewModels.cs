@@ -143,9 +143,9 @@ public sealed class NoticeViewModel(Notice notice)
     public string Scope => notice.PartitionNumber is { } n ? $"Partition {n}" : "Disk";
     public string Color => notice.Severity switch
     {
-        NoticeSeverity.Blocking => "#B91C1C",
-        NoticeSeverity.Caution => "#B45309",
-        _ => "#1D4ED8",
+        NoticeSeverity.Blocking => Theme.DangerHex,
+        NoticeSeverity.Caution => Theme.WarningHex,
+        _ => Theme.InfoHex,
     };
 }
 

@@ -39,7 +39,7 @@ public sealed class CopyVerifyWindow : Window
     private CancellationTokenSource? _cts;
     private string? _lastFolder;
 
-    private static Brush Muted => new SolidColorBrush(Color.FromRgb(0x4B, 0x55, 0x63));
+    private static Brush Muted => Theme.Muted;
 
     public CopyVerifyWindow(IReadOnlyList<CopyDrive> drives)
     {
@@ -49,9 +49,16 @@ public sealed class CopyVerifyWindow : Window
         ResizeMode = ResizeMode.NoResize;
         WindowStartupLocation = WindowStartupLocation.CenterOwner;
         FontFamily = new FontFamily("Segoe UI");
+        Theme.Apply(this);
+        Icon = Application.Current.MainWindow?.Icon;
         FontSize = 13;
 
         var panel = new StackPanel { Margin = new Thickness(20) };
+        panel.Children.Add(new Controls.SpinningDisk
+        {
+            Width = 34, Height = 34, FollowsActivity = true, IsSpinning = true,
+            HorizontalAlignment = HorizontalAlignment.Left, Margin = new Thickness(0, 0, 0, 10),
+        });
         panel.Children.Add(new TextBlock
         {
             Text = "Copies every file from one drive into a NEW folder on another drive, then reads each copy back and compares " +
@@ -170,7 +177,7 @@ public sealed class CopyVerifyWindow : Window
         }
         _lastFolder = folder;
         _target.Text = (resume ? "Resuming the unfinished copy in: " : "The copy will go into a new folder: ") + folder;
-        _status.Foreground = Brushes.Black;
+        _status.Foreground = Theme.Text;
         _status.FontWeight = FontWeights.Normal;
         var cts = new CancellationTokenSource();
         _cts = cts;
@@ -193,12 +200,14 @@ public sealed class CopyVerifyWindow : Window
         });
 
         CopyReport report;
+        var activity = Controls.DiskActivity.Begin();
         try
         {
             report = await new VerifiedCopy(AppServices.Log).CopyAndVerifyAsync($@"{s.Letter}:\", folder, progress, cts.Token, resume);
         }
         finally
         {
+            activity.Dispose();
             cts.Dispose();
             _cts = null;
             _cancel.IsEnabled = false;
@@ -206,7 +215,7 @@ public sealed class CopyVerifyWindow : Window
         }
 
         _status.Text = report.Message;
-        _status.Foreground = report.IsVerified ? new SolidColorBrush(Color.FromRgb(0x04, 0x78, 0x57)) : new SolidColorBrush(Color.FromRgb(0xB9, 0x1C, 0x1C));
+        _status.Foreground = report.IsVerified ? Theme.Success : Theme.Danger;
         _status.FontWeight = FontWeights.SemiBold;
         var lines = new List<string> { $"Files copied: {report.FilesCopied:N0}   Verified: {report.FilesVerified:N0}   Data: {ByteSize.Format(report.BytesCopied)}" +
                                        (report.FilesAlreadyCopied > 0 ? $"   Already copied earlier: {report.FilesAlreadyCopied:N0}" : "") };

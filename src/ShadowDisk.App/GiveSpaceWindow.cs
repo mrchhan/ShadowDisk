@@ -51,9 +51,16 @@ public sealed class GiveSpaceWindow : Window
         ResizeMode = ResizeMode.NoResize;
         WindowStartupLocation = WindowStartupLocation.CenterOwner;
         FontFamily = new FontFamily("Segoe UI");
+        Theme.Apply(this);
+        Icon = Application.Current.MainWindow?.Icon;
         FontSize = 13;
 
         var panel = new StackPanel { Margin = new Thickness(20) };
+        panel.Children.Add(new Controls.SpinningDisk
+        {
+            Width = 34, Height = 34, FollowsActivity = true, IsSpinning = true,
+            HorizontalAlignment = HorizontalAlignment.Left, Margin = new Thickness(0, 0, 0, 10),
+        });
         var inTheWay = (plan.Recovery, _donor) switch
         {
             (not null, not null) => $"the Recovery partition and {_donor} are",
@@ -78,13 +85,13 @@ public sealed class GiveSpaceWindow : Window
             facts += $"    {_donor} {ByteSize.Format(d.SizeBytes)} ({ByteSize.Format(plan.DonorUsedBytes)} of files; they need about {ByteSize.Format(plan.NeededForDonorFiles)})";
         panel.Children.Add(new TextBlock
         {
-            Text = facts, Foreground = new SolidColorBrush(Color.FromRgb(0x4B, 0x55, 0x63)), TextWrapping = TextWrapping.Wrap,
+            Text = facts, Foreground = Theme.Muted, TextWrapping = TextWrapping.Wrap,
         });
         foreach (var note in plan.Notes ?? [])
             panel.Children.Add(new TextBlock
             {
                 Text = "⚠  " + note, TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 6, 0, 0),
-                Foreground = new SolidColorBrush(Color.FromRgb(0x92, 0x40, 0x0E)),
+                Foreground = Theme.Warning,
             });
 
         panel.Children.Add(new TextBlock { Text = $"How much space to give to {_target}?", Margin = new Thickness(0, 12, 0, 0) });
@@ -152,10 +159,10 @@ public sealed class GiveSpaceWindow : Window
         {
             var (symbol, color) = step.State switch
             {
-                Core.Wizard.StepState.Done => ("✓", "#047857"),
-                Core.Wizard.StepState.Skipped => ("–", "#6B7280"),
-                Core.Wizard.StepState.Failed => ("✗", "#B91C1C"),
-                _ => (step == _wizard.NextStep ? "▶" : "○", step == _wizard.NextStep ? "#B45309" : "#6B7280"),
+                Core.Wizard.StepState.Done => ("✓", Theme.SuccessHex),
+                Core.Wizard.StepState.Skipped => ("–", Theme.MutedHex),
+                Core.Wizard.StepState.Failed => ("✗", Theme.DangerHex),
+                _ => (step == _wizard.NextStep ? "▶" : "○", step == _wizard.NextStep ? Theme.WarningHex : Theme.MutedHex),
             };
             var row = new StackPanel { Margin = new Thickness(0, 2, 0, 2) };
             row.Children.Add(new TextBlock
@@ -166,7 +173,7 @@ public sealed class GiveSpaceWindow : Window
             });
             if (step.Message is { } m)
                 row.Children.Add(new TextBlock { Text = m, TextWrapping = TextWrapping.Wrap, Margin = new Thickness(22, 0, 0, 0), FontSize = 12,
-                                                 Foreground = new SolidColorBrush(Color.FromRgb(0x4B, 0x55, 0x63)) });
+                                                 Foreground = Theme.Muted });
             _stepsPanel.Children.Add(row);
         }
         _next.IsEnabled = !_wizard.IsFinished && !_running;
@@ -210,6 +217,7 @@ public sealed class GiveSpaceWindow : Window
         var step = _wizard.NextStep!;
         var isCopy = step.Kind == GiveSpaceStepKind.CopyAndVerify;
         _running = true;
+        var activity = Controls.DiskActivity.Begin();   // every disk in the app spins up while the step runs
         _next.IsEnabled = false;
         var cts = new CancellationTokenSource();
         _cts = cts;
@@ -237,6 +245,7 @@ public sealed class GiveSpaceWindow : Window
         }
         finally
         {
+            activity.Dispose();
             _running = false;
             cts.Dispose();
             _cts = null;

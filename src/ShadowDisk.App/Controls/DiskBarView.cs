@@ -22,6 +22,16 @@ public sealed class DiskBarView : LayoutViewBase
     private const double LabelHeight = 40;
     private const double MinBlockWidth = 14;
     private const double HandleGrab = 8;
+    private const double BarRadius = 8;
+
+    private static readonly Brush Sheen = CreateSheen();
+
+    private static Brush CreateSheen()
+    {
+        var brush = new LinearGradientBrush(Color.FromArgb(0x40, 0xFF, 0xFF, 0xFF), Color.FromArgb(0x00, 0xFF, 0xFF, 0xFF), 90);
+        brush.Freeze();
+        return brush;
+    }
 
     public static readonly DependencyProperty HighlightStartProperty = DependencyProperty.Register(
         nameof(HighlightStart), typeof(long), typeof(DiskBarView), new FrameworkPropertyMetadata(0L, FrameworkPropertyMetadataOptions.AffectsRender));
@@ -81,9 +91,19 @@ public sealed class DiskBarView : LayoutViewBase
 
         var width = Math.Max(1, ActualWidth - 2);
         var widths = VisualSegmentBuilder.ScaleWithMinimum(blocks.Select(b => b.Region.SizeBytes).ToList(), width, MinBlockWidth);
-        var divider = new Pen(Brushes.White, 2);
-        var outline = new Pen(new SolidColorBrush(Color.FromRgb(0x9C, 0xA3, 0xAF)), 1);
+        var divider = new Pen(PanelBrush, 2);
+        var outline = new Pen(LineBrush, 1);
         var x = 1.0;
+
+        // Sweep-in animation: reveal the bar from left to right.
+        var reveal = Math.Clamp(Reveal, 0, 1);
+        if (reveal < 1) dc.PushClip(new RectangleGeometry(new Rect(0, 0, ActualWidth * reveal, ActualHeight)));
+
+        // Rounded ends for the bar (the labels underneath are not clipped).
+        var barRect = new Rect(1, 1, width, BarHeight);
+        dc.PushClip(new CombinedGeometry(GeometryCombineMode.Union,
+            new RectangleGeometry(barRect, BarRadius, BarRadius),
+            new RectangleGeometry(new Rect(0, BarHeight + 2, Math.Max(1, ActualWidth), LabelHeight + 10))));
 
         for (var i = 0; i < blocks.Count; i++)
         {
@@ -97,7 +117,7 @@ public sealed class DiskBarView : LayoutViewBase
             }
             else if (b.Region.Partition.Volume is not null)
             {
-                var usedWidth = rect.Width * b.UsedFraction;
+                var usedWidth = rect.Width * b.UsedFraction * UsedGrow;
                 dc.DrawRectangle(FreeBrush, null, rect);
                 dc.DrawRectangle(UsedBrush, null, new Rect(rect.X, rect.Y, usedWidth, rect.Height));
             }
@@ -109,13 +129,13 @@ public sealed class DiskBarView : LayoutViewBase
 
             if (rect.Width > 46)
             {
-                var name = Text(b.Label, 12, Brushes.Black, FontWeights.SemiBold);
+                var name = Text(b.Label, 12, TextBrush, FontWeights.SemiBold);
                 name.MaxTextWidth = rect.Width - 6;
                 name.MaxTextHeight = 18;
                 name.Trimming = TextTrimming.CharacterEllipsis;
                 dc.DrawText(name, new Point(rect.X + 3, BarHeight + 5));
 
-                var size = Text(ByteSize.Format(b.Region.SizeBytes), 11, Brushes.DimGray, FontWeights.Normal);
+                var size = Text(ByteSize.Format(b.Region.SizeBytes), 11, MutedBrush, FontWeights.Normal);
                 size.MaxTextWidth = rect.Width - 6;
                 size.MaxTextHeight = 16;
                 size.Trimming = TextTrimming.CharacterEllipsis;
@@ -124,7 +144,11 @@ public sealed class DiskBarView : LayoutViewBase
             x += widths[i];
         }
 
-        dc.DrawRectangle(null, outline, new Rect(1, 1, width, BarHeight));
+        // Glass sheen over the top of the bar.
+        dc.DrawRoundedRectangle(Sheen, null, new Rect(1, 1, width, BarHeight * 0.5), BarRadius, BarRadius);
+        dc.Pop();
+        dc.DrawRoundedRectangle(null, outline, barRect, BarRadius, BarRadius);
+        if (reveal < 1) dc.Pop();
 
         if (HighlightLength > 0)
         {
@@ -140,7 +164,13 @@ public sealed class DiskBarView : LayoutViewBase
         {
             var selected = _blocks.FirstOrDefault(t => ReferenceEquals(t.Block.Region, SelectedRegion));
             if (selected.Block is not null)
+            {
+                // A soft glow that breathes around the selected block.
+                dc.PushOpacity(0.12 + 0.38 * Pulse);
+                dc.DrawRoundedRectangle(null, new Pen(SelectionBrush, 4 + 4 * Pulse), Rect.Inflate(selected.Rect, 0.5, 0.5), 3, 3);
+                dc.Pop();
                 dc.DrawRectangle(null, new Pen(SelectionBrush, 3), Rect.Inflate(selected.Rect, -1.5, -1.5));
+            }
         }
 
         if (HasHandle)

@@ -11,6 +11,7 @@ public partial class App : Application
     {
         StartInDemoMode = e.Args.Any(a => string.Equals(a, "--demo", StringComparison.OrdinalIgnoreCase));
         DispatcherUnhandledException += OnUnhandled;
+        Theme.Load();
         base.OnStartup(e);
     }
 
@@ -18,7 +19,7 @@ public partial class App : Application
     {
         Services.AppServices.Log.Error($"Unexpected error: {e.Exception.GetType().Name}: {e.Exception.Message}");
         MessageBox.Show(
-            "Something went wrong inside ShadowDisk. No changes were made to your disks (this version is read-only).\n\n" +
+            "Something went wrong inside ShadowDisk. If a disk change was in progress, check the activity log and click Refresh to see the disk as it is now before doing anything else.\n\n" +
             e.Exception.Message,
             "ShadowDisk", MessageBoxButton.OK, MessageBoxImage.Warning);
         e.Handled = true;

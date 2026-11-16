@@ -50,6 +50,7 @@ public sealed class MainViewModel : ObservableObject
         OpenDiskManagementCommand = new RelayCommand(OpenDiskManagement);
         RestartElevatedCommand = new RelayCommand(RestartElevated, () => !IsElevated);
         OpenLogFolderCommand = new RelayCommand(OpenLogFolder);
+        ToggleThemeCommand = new RelayCommand(ToggleTheme, () => !IsBusy);
         CreatePracticeDiskCommand = new RelayCommand(() => _ = CreatePracticeDiskAsync(), () => !IsBusy);
         ToggleRealDiskChangesCommand = new RelayCommand(ToggleRealDiskChanges, () => !IsBusy);
         OpenCopyVerifyCommand = new RelayCommand(OpenCopyVerify, () => !IsBusy && _snapshot is { IsSimulated: false });
@@ -79,6 +80,18 @@ public sealed class MainViewModel : ObservableObject
     public RelayCommand OpenDiskManagementCommand { get; }
     public RelayCommand RestartElevatedCommand { get; }
     public RelayCommand OpenLogFolderCommand { get; }
+    public RelayCommand ToggleThemeCommand { get; }
+
+    public string Version => AppServices.Version;
+    public string ThemeButtonText => Theme.IsDark ? "Theme: Shadow" : "Theme: Light";
+
+    /// <summary>Switches between the Shadow and Light themes. Re-reads the disks (read-only) so every colour is redrawn.</summary>
+    private void ToggleTheme()
+    {
+        Theme.Toggle();
+        OnPropertyChanged(nameof(ThemeButtonText));
+        _ = RefreshAsync();
+    }
     public RelayCommand CreatePracticeDiskCommand { get; }
     public RelayCommand ToggleRealDiskChangesCommand { get; }
     public RelayCommand OpenCopyVerifyCommand { get; }

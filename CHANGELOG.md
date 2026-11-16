@@ -11,6 +11,21 @@
   and an explanation when a volume can't be extended (e.g. Recovery sits after C:).
 - **Copy & verify** (Stage 5 part 1): copy a drive's files to a new folder on another drive and check
   every file's SHA-256 checksum; never overwrites or deletes.
+- **New look: the Shadow theme** (default) — night-blue panels with the AIShadow electric blue and ember orange,
+  a hero header with the app and AIShadow logos, grouped toolbar, rounded cards, slim scroll bars and a gradient
+  progress bar. **Light theme** still available (toolbar "Theme" button; remembered).
+- **A real spinning hard disk:** a drawn platter (tracks, blue and orange reflections, hub, read/write arm and
+  activity light) in the header, next to each disk, in the status bar and in the dialogs. It turns slowly when idle;
+  while ShadowDisk is working (refresh, changes, copy & verify, health scans, give-space steps) it spins up, the arm
+  seeks across the tracks and the light blinks orange.
+- **Shadow colours on the charts:** glossy electric-blue→violet used space, night-blue free space, slate system
+  partitions, a rounded bar with a glass sheen, and an AIShadow blue→orange ring around the pie.
+- **Animations:** a start-up intro (header slides in, toolbar and disk list rise, disks slide in one by one);
+  slow aurora glows, spinning rings around the ShadowDisk icon, a shine across the title and a shimmering accent
+  line in the header; cards cascade in when a disk is chosen; the bar sweeps in and each volume's used space fills
+  up, the pie draws itself clockwise; the selected block or slice breathes with a soft glow; buttons glow on hover
+  and press in; the list's selection bar springs open; progress bars shine; the plan preview glows; dialogs zoom
+  in; health-scan cells flash as they are read. All motion follows Windows' "Show animations in Windows" setting.
 - **Disk health** (Stage 4): the drive's own health counters with a plain verdict, and a read-only surface
   scan for bad (unreadable) and slow areas, with a map, stop/continue, and a saved text report.
 - The give-space wizard now warns that file permissions aren't copied, so programs on the moved drive may need repair.

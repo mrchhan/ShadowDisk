@@ -40,21 +40,48 @@ public sealed class DiskPieView : LayoutViewBase
 
         var sweeps = VisualSegmentBuilder.ScaleWithMinimum(segments.Select(s => s.Bytes).ToList(), 360, MinSliceDegrees);
         var start = -90.0; // 12 o'clock
-        var edge = new Pen(Brushes.White, 1.5);
+        var edge = new Pen(PanelBrush, 1.5);
+
+        // Draw-in animation: the donut is drawn clockwise from 12 o'clock while it fades in.
+        var reveal = Math.Clamp(Reveal, 0, 1);
+        var animating = reveal < 1;
+        var limit = -90.0 + 360.0 * reveal;
+        if (animating) dc.PushOpacity(0.3 + 0.7 * reveal);
 
         for (var i = 0; i < segments.Count; i++)
         {
             _slices.Add((segments[i], start, sweeps[i]));
-            var selected = ReferenceEquals(segments[i].Region, SelectedRegion);
-            var outer = selected ? _outer : _outer - 5;
-            dc.DrawGeometry(BrushFor(segments[i].Kind), edge, Slice(_center, outer, _inner, start, sweeps[i]));
+            var visible = Math.Min(sweeps[i], limit - start);
+            if (visible > 0.05)
+            {
+                var selected = ReferenceEquals(segments[i].Region, SelectedRegion);
+                var outer = selected ? _outer : _outer - 5;
+                var slice = Slice(_center, outer, _inner, start, visible);
+                if (selected)
+                {
+                    // A soft glow that breathes around the selected slice.
+                    dc.PushOpacity(0.15 + 0.4 * Pulse);
+                    dc.DrawGeometry(null, new Pen(SelectionBrush, 3 + 4 * Pulse), slice);
+                    dc.Pop();
+                }
+                dc.DrawGeometry(BrushFor(segments[i].Kind), edge, slice);
+            }
             start += sweeps[i];
         }
 
-        var total = Text(ByteSize.Format(Layout.Disk.SizeBytes), 15, Brushes.Black, FontWeights.SemiBold);
+        // The AIShadow ring: electric blue to ember orange around the donut.
+        if (reveal > 0.6)
+        {
+            dc.PushOpacity(Math.Min(1, (reveal - 0.6) / 0.4) * 0.85);
+            dc.DrawEllipse(null, new Pen(AccentGradientBrush, 2.2), _center, _outer + 3, _outer + 3);
+            dc.Pop();
+        }
+
+        var total = Text(ByteSize.Format(Layout.Disk.SizeBytes), 15, TextBrush, FontWeights.SemiBold);
         dc.DrawText(total, new Point(_center.X - total.Width / 2, _center.Y - total.Height + 2));
-        var caption = Text($"Disk {Layout.Disk.Number}", 11, Brushes.DimGray, FontWeights.Normal);
+        var caption = Text($"Disk {Layout.Disk.Number}", 11, MutedBrush, FontWeights.Normal);
         dc.DrawText(caption, new Point(_center.X - caption.Width / 2, _center.Y + 2));
+        if (animating) dc.Pop();
     }
 
     private Brush BrushFor(SegmentKind kind) => kind switch

@@ -4,6 +4,7 @@ using System.Windows.Automation;
 using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Media;
+using System.Windows.Media.Animation;
 using ShadowDisk.Core;
 using ShadowDisk.Core.Layout;
 
@@ -23,6 +24,29 @@ public abstract class LayoutViewBase : FrameworkElement
         nameof(SelectedRegion), typeof(DiskRegion), typeof(LayoutViewBase),
         new FrameworkPropertyMetadata(null, FrameworkPropertyMetadataOptions.AffectsRender | FrameworkPropertyMetadataOptions.BindsTwoWayByDefault));
 
+    /// <summary>0 → 1 while a newly chosen disk's chart sweeps in. Drawing only; 1 means fully shown.</summary>
+    public static readonly DependencyProperty RevealProperty = DependencyProperty.Register(
+        nameof(Reveal), typeof(double), typeof(LayoutViewBase), new FrameworkPropertyMetadata(1.0, FrameworkPropertyMetadataOptions.AffectsRender));
+
+    public double Reveal
+    {
+        get => (double)GetValue(RevealProperty);
+        set => SetValue(RevealProperty, value);
+    }
+
+    /// <summary>0 ↔ 1, breathing, for the glow around the selected block or slice. Drawing only.</summary>
+    public static readonly DependencyProperty PulseProperty = DependencyProperty.Register(
+        nameof(Pulse), typeof(double), typeof(LayoutViewBase), new FrameworkPropertyMetadata(0.0, FrameworkPropertyMetadataOptions.AffectsRender));
+
+    public double Pulse
+    {
+        get => (double)GetValue(PulseProperty);
+        set => SetValue(PulseProperty, value);
+    }
+
+    /// <summary>The used part of each volume grows during the second part of the sweep-in.</summary>
+    protected double UsedGrow => Math.Clamp((Reveal - 0.35) / 0.65, 0, 1);
+
     public static readonly DependencyProperty IsSelectableProperty = DependencyProperty.Register(
         nameof(IsSelectable), typeof(bool), typeof(LayoutViewBase), new PropertyMetadata(true));
 
@@ -41,6 +65,19 @@ public abstract class LayoutViewBase : FrameworkElement
         Focusable = true;
         FocusVisualStyle = null;
         Cursor = Cursors.Hand;
+        Loaded += (_, _) =>
+        {
+            if (!IsSelectable || !Theme.Motion) return;
+            var breathe = new DoubleAnimation(0, 1, TimeSpan.FromMilliseconds(1100))
+            {
+                AutoReverse = true,
+                RepeatBehavior = RepeatBehavior.Forever,
+                EasingFunction = new SineEase { EasingMode = EasingMode.EaseInOut },
+            };
+            Timeline.SetDesiredFrameRate(breathe, 30);   // gentle on the CPU
+            BeginAnimation(PulseProperty, breathe);
+        };
+        Unloaded += (_, _) => BeginAnimation(PulseProperty, null);
     }
 
     public DiskLayout? Layout
@@ -60,6 +97,11 @@ public abstract class LayoutViewBase : FrameworkElement
     protected Brush SystemBrush => Find("SystemBrush", Brushes.Gray);
     protected Brush UnallocatedBrush => Find("UnallocatedBrush", Brushes.White);
     protected Brush SelectionBrush => Find("SelectionBrush", Brushes.Orange);
+    protected Brush TextBrush => Find("TextBrush", Brushes.Black);
+    protected Brush MutedBrush => Find("MutedText", Brushes.DimGray);
+    protected Brush PanelBrush => Find("PanelBrush", Brushes.White);
+    protected Brush LineBrush => Find("LineBrush", Brushes.Gray);
+    protected Brush AccentGradientBrush => Find("AccentGradient", Brushes.SteelBlue);
 
     /// <summary>Returns the region under a point, or null.</summary>
     protected abstract DiskRegion? HitTestRegion(Point p);
@@ -119,6 +161,15 @@ public abstract class LayoutViewBase : FrameworkElement
     private static void OnLayoutChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
     {
         if (d is LayoutViewBase view && e.NewValue is DiskLayout layout)
+        {
             AutomationProperties.SetName(view, VisualSegmentBuilder.Describe(layout));
+            // Sweep in when a different disk is shown (not on every preview change of the same disk).
+            var old = e.OldValue as DiskLayout;
+            if (view.IsSelectable && Theme.Motion && (old is null || old.Disk.Number != layout.Disk.Number || old.Disk.UniqueId != layout.Disk.UniqueId))
+                view.BeginAnimation(RevealProperty, new DoubleAnimation(0, 1, TimeSpan.FromMilliseconds(950))
+                {
+                    EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut },
+                });
+        }
     }
 }
