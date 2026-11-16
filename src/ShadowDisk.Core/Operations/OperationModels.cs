@@ -87,6 +87,12 @@ public interface IDiskOperations
     /// <summary>Deletes one partition. Everything on it is lost.</summary>
     Task<BackendResult> DeletePartitionAsync(PhysicalDisk disk, int partitionNumber, long offsetBytes);
 
+    /// <summary>
+    /// Creates a Recovery partition (Recovery type, formatted NTFS, no drive letter) at exactly this place.
+    /// Used only when moving the Recovery partition.
+    /// </summary>
+    Task<BackendResult> CreateRecoveryPartitionAsync(PhysicalDisk disk, long offsetBytes, long sizeBytes);
+
     /// <summary>Removes <paramref name="oldLetter"/> (if any) and assigns <paramref name="newLetter"/>.</summary>
     Task<BackendResult> SetDriveLetterAsync(PhysicalDisk disk, int partitionNumber, long offsetBytes, string? oldLetter, string newLetter);
 }

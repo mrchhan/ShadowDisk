@@ -135,23 +135,33 @@ public sealed class GiveSpaceTests : IDisposable
     }
 
     [Fact]
-    public void Giving_space_to_the_windows_volume_is_not_offered_yet()
+    public void A_start_up_partition_is_never_a_target()
+    {
+        var disk = Disk();
+        disk = disk with { Partitions = disk.Partitions.Select(p => p.PartitionNumber == 2 ? p with { IsSystem = true } : p).ToList() };
+        var plan = PlanFor(disk, "D");
+        Assert.False(plan.IsPossible);
+        Assert.Contains(plan.Problems, p => p.Contains("needs to start"));
+    }
+
+    [Fact]
+    public void The_windows_volume_can_be_a_target_with_a_backup_note()
     {
         var disk = Disk();
         disk = disk with { Partitions = disk.Partitions.Select(p => p.PartitionNumber == 2 ? p with { IsBoot = true } : p).ToList() };
         var plan = PlanFor(disk, "D");
-        Assert.False(plan.IsPossible);
-        Assert.Contains(plan.Problems, p => p.Contains("later part"));
+        Assert.True(plan.IsPossible, string.Join(" ", plan.Problems));
+        Assert.Contains(plan.Notes!, n => n.Contains("Windows drive"));
     }
 
     [Fact]
-    public void A_recovery_partition_in_the_way_is_explained()
+    public void A_recovery_partition_in_the_way_needs_windows_recovery_to_be_checked()
     {
         var disk = Disk();
         disk = disk with { Partitions = disk.Partitions.Select(p => p.PartitionNumber == 3 ? p with { Kind = PartitionKind.Recovery } : p).ToList() };
         var plan = PlanFor(disk, "D");
         Assert.False(plan.IsPossible);
-        Assert.Contains(plan.Problems, p => p.Contains("can't be moved"));
+        Assert.Contains(plan.Problems, p => p.Contains("could not check Windows Recovery"));
     }
 
     [Fact]

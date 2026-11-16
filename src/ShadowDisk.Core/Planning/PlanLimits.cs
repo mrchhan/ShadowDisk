@@ -12,6 +12,20 @@ public static class PlanLimits
     /// <summary>GPT keeps a backup partition table in the last sectors of the disk.</summary>
     public const long GptTailReserve = ByteSize.MiB;
 
+    /// <summary>
+    /// MBR partitions can't use the last, partial "cylinder" of a disk (about 8 MiB with the usual geometry):
+    /// diskpart reports "not enough usable space" there. So the last 8 MiB of an MBR disk is never planned into.
+    /// </summary>
+    public const long MbrTailReserve = 8 * ByteSize.MiB;
+
+    /// <summary>The bytes at the end of the disk that no new or bigger partition may use.</summary>
+    public static long TailReserve(PhysicalDisk disk) => disk.Style switch
+    {
+        PartitionStyle.Gpt => GptTailReserve,
+        PartitionStyle.Mbr => MbrTailReserve,
+        _ => 0,
+    };
+
     public static long AlignDown(long bytes) => bytes <= 0 ? 0 : bytes / Alignment * Alignment;
     public static long AlignUp(long bytes) => bytes <= 0 ? 0 : (bytes + Alignment - 1) / Alignment * Alignment;
 
@@ -35,9 +49,7 @@ public static class PlanLimits
             sawUnallocated |= regions[i].Kind == RegionKind.Unallocated;
         }
         if (!sawUnallocated) return 0;
-        if (layout.Disk.Style == PartitionStyle.Gpt && p.EndBytes + total >= layout.Disk.SizeBytes)
-            total = Math.Max(0, total - GptTailReserve);
-        return total;
+        return Math.Max(0, Math.Min(total, layout.Disk.SizeBytes - TailReserve(layout.Disk) - p.EndBytes));
     }
 
     /// <summary>
@@ -100,8 +112,7 @@ public static class PlanLimits
     public static (long Offset, SizeLimits Limits) ForNewVolume(DiskLayout layout, DiskRegion region)
     {
         var start = AlignUp(region.OffsetBytes);
-        var end = region.EndBytes;
-        if (layout.Disk.Style == PartitionStyle.Gpt && end >= layout.Disk.SizeBytes) end -= GptTailReserve;
+        var end = Math.Min(region.EndBytes, layout.Disk.SizeBytes - TailReserve(layout.Disk));
         var max = AlignDown(end - start);
         return (start, new SizeLimits(MinimumNewVolume, Math.Max(0, max), LimitsSource.FreeSpace,
             "Calculated from the unallocated space, aligned to 1 MiB."));

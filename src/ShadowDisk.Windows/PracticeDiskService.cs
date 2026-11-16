@@ -1,7 +1,5 @@
-using System.Diagnostics;
 using System.Globalization;
 using System.Runtime.Versioning;
-using System.Text;
 using ShadowDisk.Core.Operations;
 
 namespace ShadowDisk.Windows;
@@ -27,8 +25,35 @@ public sealed class PracticeDiskService
             ? Directory.GetFiles(Folder, "*" + OperationPolicy.PracticeFileExtension).Order().ToList()
             : [];
 
-    /// <summary>Creates, attaches and initialises (GPT) a new practice disk. Returns its file path.</summary>
-    public async Task<string> CreateAsync(int sizeMiB, IProgress<string>? progress = null)
+    /// <summary>
+    /// Creates a practice disk shaped like a typical older Windows PC disk (and like the test PC's Disk 0):
+    /// MBR with four partitions — "Practice System" 50 MiB | "Practice Windows" 2 GiB (stand-in for C:) |
+    /// Recovery 682 MiB (type 0x27) | "Practice data" ~3 GiB. Windows Recovery on it is simulated.
+    /// Every diskpart command selects the practice disk by its file path.
+    /// </summary>
+    public async Task<string> CreateWindowsLikeAsync(IProgress<string>? progress = null)
+    {
+        var path = await CreateAsync(5856, progress, mbr: true);
+        progress?.Report("Creating the practice partitions…");
+        await RunDiskPartAsync(
+            $"select vdisk file=\"{path}\"",
+            "create partition primary size=50",
+            "format quick fs=ntfs label=\"Practice System\"",
+            "create partition primary size=2048",
+            "format quick fs=ntfs label=\"Practice Windows\"",
+            "assign",
+            "create partition primary size=682 id=27",
+            "format quick fs=ntfs label=\"Windows RE tools\"",
+            "set id=27 override",   // format resets an MBR partition's type to 07, so set Recovery (0x27) again afterwards
+            "create partition primary",
+            "format quick fs=ntfs label=\"Practice data\"",
+            "assign");
+        await Task.Run(Wmi.RefreshStorageCache);   // diskpart changes are not always visible to the Storage API until refreshed
+        return path;
+    }
+
+    /// <summary>Creates, attaches and initialises (GPT, or MBR) a new practice disk. Returns its file path.</summary>
+    public async Task<string> CreateAsync(int sizeMiB, IProgress<string>? progress = null, bool mbr = false)
     {
         if (!Elevation.IsElevated()) throw new InvalidOperationException("Creating a practice disk needs administrator rights. Use “Restart as administrator”.");
         if (sizeMiB is < 64 or > 16384) throw new ArgumentOutOfRangeException(nameof(sizeMiB), "Practice disks must be between 64 MiB and 16 GiB.");
@@ -45,8 +70,8 @@ public sealed class PracticeDiskService
         progress?.Report("Waiting for Windows to show the practice disk…");
         var number = await WaitForDiskAsync(path);
 
-        progress?.Report("Initialising the practice disk (GPT)…");
-        await Task.Run(() => PrepareDisk(number, path));
+        progress?.Report($"Initialising the practice disk ({(mbr ? "MBR" : "GPT")})…");
+        await Task.Run(() => PrepareDisk(number, path, mbr));
         return path;
     }
 
@@ -82,8 +107,8 @@ public sealed class PracticeDiskService
         throw new InvalidOperationException("Windows attached the practice disk but did not list it within 20 seconds. Use Refresh, or remove it and try again.");
     }
 
-    /// <summary>Brings the NEW practice disk online and initialises it as GPT. Re-checks it is the practice file first.</summary>
-    private static void PrepareDisk(int number, string path)
+    /// <summary>Brings the NEW practice disk online and initialises it (GPT or MBR). Re-checks it is the practice file first.</summary>
+    private static void PrepareDisk(int number, string path, bool mbr)
     {
         var scope = Wmi.StorageScope();
         using var disk = Wmi.Disk(scope, number) ?? throw new InvalidOperationException("The practice disk disappeared.");
@@ -102,36 +127,10 @@ public sealed class PracticeDiskService
         }
         if (Wmi.ToUShort(disk["PartitionStyle"]) == 0)
         {
-            var (code, _) = Wmi.Invoke(disk, "Initialize", p => p["PartitionStyle"] = (ushort)2);
+            var (code, _) = Wmi.Invoke(disk, "Initialize", p => p["PartitionStyle"] = mbr ? (ushort)1 : (ushort)2);
             if (code != 0) throw new InvalidOperationException("Could not initialise the practice disk: " + Wmi.Explain(code));
         }
     }
 
-    private static async Task RunDiskPartAsync(params string[] commands)
-    {
-        var script = Path.Combine(Path.GetTempPath(), $"shadowdisk-{Guid.NewGuid():N}.txt");
-        await File.WriteAllTextAsync(script, string.Join(Environment.NewLine, commands) + Environment.NewLine, Encoding.ASCII);
-        try
-        {
-            using var process = Process.Start(new ProcessStartInfo("diskpart.exe", $"/s \"{script}\"")
-            {
-                UseShellExecute = false,
-                CreateNoWindow = true,
-                RedirectStandardOutput = true,
-                RedirectStandardError = true,
-            }) ?? throw new InvalidOperationException("Could not start diskpart.");
-            var output = await process.StandardOutput.ReadToEndAsync();
-            await process.WaitForExitAsync();
-            if (process.ExitCode != 0)
-                throw new InvalidOperationException("diskpart reported an error: " + LastMeaningfulLine(output));
-        }
-        finally
-        {
-            try { File.Delete(script); } catch (IOException) { }
-        }
-    }
-
-    private static string LastMeaningfulLine(string output) =>
-        output.Split('\n').Select(l => l.Trim()).LastOrDefault(l => l.Length > 0 && !l.StartsWith("DISKPART>", StringComparison.Ordinal))
-        ?? "no details";
+    private static Task RunDiskPartAsync(params string[] commands) => DiskPart.RunAsync(commands);
 }

@@ -79,6 +79,21 @@ internal sealed class FakeDiskOperations(FakeInventory inventory) : IDiskOperati
         return Task.FromResult(new ResizeBackendResult(true, null));
     }
 
+    public int RecoveryCreateCalls { get; private set; }
+    public bool FailRecoveryCreate { get; set; }
+
+    public Task<BackendResult> CreateRecoveryPartitionAsync(PhysicalDisk disk, long offsetBytes, long sizeBytes)
+    {
+        RecoveryCreateCalls++;
+        if (FailRecoveryCreate) return Task.FromResult(new BackendResult(false, "diskpart reported an error"));
+        var number = disk.Partitions.Count == 0 ? 1 : disk.Partitions.Max(p => p.PartitionNumber) + 1;
+        var volume = new Volume(null, "Windows RE tools", "NTFS", sizeBytes, sizeBytes - 20 * ByteSize.MiB, ReportedHealth.Healthy, EncryptionState.NotEncrypted);
+        var part = new Partition(disk.Number, number, offsetBytes, sizeBytes, PartitionKind.Recovery, null, 0x27, false, false, false, true, volume);
+        var index = inventory.Disks.FindIndex(d => d.Number == disk.Number);
+        inventory.Disks[index] = disk with { Partitions = disk.Partitions.Append(part).OrderBy(p => p.OffsetBytes).ToList() };
+        return Task.FromResult(new BackendResult(true, null));
+    }
+
     public Task<CreateVolumeBackendResult> CreateVolumeAsync(PhysicalDisk disk, long offsetBytes, long sizeBytes, string volumeLabel)
     {
         Calls++;

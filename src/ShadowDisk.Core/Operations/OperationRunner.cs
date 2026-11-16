@@ -177,7 +177,7 @@ public sealed class OperationRunner(
         Step("Confirmed it is the same disk, layout and partition.");
 
         // 2. Policy, fresh limits, validation
-        var notAllowed = policy.WhyNotAllowed(disk, partition, onMainsPower?.Invoke());
+        var notAllowed = policy.WhyNotAllowed(disk, partition, onMainsPower?.Invoke(), extend: !order.IsShrink);
         if (notAllowed.Count > 0)
             return Stop(OperationStatus.Blocked, string.Join(" ", notAllowed) + " Nothing was changed.");
         Step(policy.IsPracticeDisk(disk)
@@ -266,7 +266,34 @@ public sealed class OperationRunner(
     /// Deletes one data partition. Besides the usual identity, layout and policy checks, <paramref name="whyNotSafe"/>
     /// must confirm the volume's files are safe to lose (empty, or verified-copied and unchanged).
     /// </summary>
-    public async Task<OperationOutcome> DeleteAsync(DeleteOrder order, Func<Partition, string?> whyNotSafe, CancellationToken cancellationToken)
+    public Task<OperationOutcome> DeleteAsync(DeleteOrder order, Func<Partition, string?> whyNotSafe, CancellationToken cancellationToken) =>
+        DeleteCoreAsync(order, WhyKindNotDeletable, whyNotSafe,
+            "Confirmed the volume is empty, or its files have a verified copy and have not changed since.", cancellationToken);
+
+    /// <summary>Largest Recovery partition ShadowDisk will delete. Bigger ones may hold the PC maker's factory image.</summary>
+    public const long MaxMovableRecoveryBytes = 2L * 1024 * 1024 * 1024;
+
+    /// <summary>Why this partition is not a Recovery partition ShadowDisk may delete (when moving it), or null.</summary>
+    public static string? WhyNotMovableRecovery(Partition p) =>
+        p.Kind != PartitionKind.Recovery
+            ? $"{p.DisplayName} is not a Recovery partition."
+            : p.IsBoot || p.IsSystem || p.IsStartupPartition
+                ? $"{p.DisplayName} is marked as a Windows start-up partition."
+                : p.SizeBytes > MaxMovableRecoveryBytes
+                    ? $"This Recovery partition is {ByteSize.Format(p.SizeBytes)}. Partitions that big often hold the PC maker's factory " +
+                      "restore image, which ShadowDisk can't recreate, so it won't move them."
+                    : null;
+
+    /// <summary>
+    /// Deletes a Recovery partition, as part of moving it. <paramref name="whyNotSafe"/> must confirm Windows Recovery
+    /// is off and its image is safe on the Windows drive. Only the wizard calls this.
+    /// </summary>
+    public Task<OperationOutcome> DeleteRecoveryAsync(DeleteOrder order, Func<Partition, string?> whyNotSafe, CancellationToken cancellationToken) =>
+        DeleteCoreAsync(order, WhyNotMovableRecovery, whyNotSafe,
+            "Confirmed Windows Recovery is off and its image is safe on the Windows drive.", cancellationToken);
+
+    private async Task<OperationOutcome> DeleteCoreAsync(DeleteOrder order, Func<Partition, string?> whyKindNot, Func<Partition, string?> whyNotSafe,
+        string safeText, CancellationToken cancellationToken)
     {
         var steps = new List<string>();
         void Step(string s) { steps.Add(s); log.Info($"Delete: {s}"); }
@@ -294,7 +321,7 @@ public sealed class OperationRunner(
             return Stop(OperationStatus.Blocked, "The partition is not where or what was expected. Nothing was changed.");
         Step($"Confirmed it is the same disk, layout and partition ({partition.DisplayName}).");
 
-        if (WhyKindNotDeletable(partition) is { } kindReason)
+        if (whyKindNot(partition) is { } kindReason)
             return Stop(OperationStatus.Blocked, kindReason + " Nothing was changed.");
         var notAllowed = policy.WhyNotAllowed(disk, partition, onMainsPower?.Invoke());
         if (notAllowed.Count > 0)
@@ -306,7 +333,7 @@ public sealed class OperationRunner(
         catch (Exception ex) { unsafeReason = $"ShadowDisk could not check the volume's files ({ex.Message})."; }
         if (unsafeReason is not null)
             return Stop(OperationStatus.Blocked, unsafeReason + " Nothing was changed.");
-        Step("Confirmed the volume is empty, or its files have a verified copy and have not changed since.");
+        Step(safeText);
 
         if (cancellationToken.IsCancellationRequested)
             return Stop(OperationStatus.Cancelled, "Cancelled before anything was changed.");
@@ -328,6 +355,69 @@ public sealed class OperationRunner(
         if (stillThere == true)
             return Stop(OperationStatus.Failed, $"Windows did not delete {partition.DisplayName}. {result.Error ?? "No reason was given."} The volume is still there.", after);
         return Stop(OperationStatus.PartiallyApplied, "The result could not be confirmed. Check the disk in Windows Disk Management before doing anything else.", after);
+    }
+
+    /// <summary>
+    /// Creates a new Recovery partition (formatted NTFS, no drive letter) in free space, as part of moving it.
+    /// Windows Recovery is put on it afterwards by turning it back on. Only the wizard calls this.
+    /// </summary>
+    public async Task<OperationOutcome> CreateRecoveryPartitionAsync(CreateVolumeOrder order, CancellationToken cancellationToken)
+    {
+        var steps = new List<string>();
+        void Step(string s) { steps.Add(s); log.Info($"Create Recovery partition: {s}"); }
+        OperationOutcome Stop(OperationStatus status, string message, InventorySnapshot? after = null)
+        {
+            if (status is OperationStatus.Blocked or OperationStatus.Cancelled) log.Warning($"Create Recovery partition {status}: {message}");
+            else if (status == OperationStatus.Succeeded) log.Info($"Create Recovery partition succeeded: {message}");
+            else log.Error($"Create Recovery partition {status}: {message}");
+            return new OperationOutcome(status, message, steps, after);
+        }
+
+        if (order.OffsetBytes % PlanLimits.Alignment != 0 || order.SizeBytes % PlanLimits.Alignment != 0
+            || order.SizeBytes < 300 * ByteSize.MiB || order.SizeBytes > MaxMovableRecoveryBytes)
+            return Stop(OperationStatus.Blocked, "The Recovery partition's position or size is not valid. Nothing was changed.");
+
+        InventorySnapshot before;
+        try { before = await inventory.GetSnapshotAsync(cancellationToken); }
+        catch (OperationCanceledException) { return Stop(OperationStatus.Cancelled, "Cancelled before anything was changed."); }
+        catch (Exception ex) { return Stop(OperationStatus.Blocked, $"Could not re-read the disk before starting ({ex.Message}). Nothing was changed."); }
+
+        var disk = before.Disks.FirstOrDefault(d => d.Number == order.DiskNumber);
+        if (disk is null || !string.Equals(disk.UniqueId, order.DiskUniqueId, StringComparison.Ordinal))
+            return Stop(OperationStatus.Blocked, $"Disk {order.DiskNumber} is no longer the disk that was chosen. Nothing was changed.");
+        if (LayoutFingerprint.Of(disk) != order.LayoutFingerprint)
+            return Stop(OperationStatus.Blocked, "The disk's layout changed in the meantime. Nothing was changed.");
+        var notAllowed = policy.WhyNotAllowed(disk, null, onMainsPower?.Invoke());
+        if (notAllowed.Count > 0)
+            return Stop(OperationStatus.Blocked, string.Join(" ", notAllowed) + " Nothing was changed.");
+        var layout = DiskLayoutBuilder.Build(disk);
+        var free = layout.Regions.Any(r => r.Kind == RegionKind.Unallocated &&
+                                           r.OffsetBytes <= order.OffsetBytes && r.EndBytes >= order.OffsetBytes + order.SizeBytes);
+        if (!free)
+            return Stop(OperationStatus.Blocked, "The planned space is no longer unallocated. Nothing was changed.");
+        Step("Confirmed the same disk and layout, and that the space is free.");
+
+        if (cancellationToken.IsCancellationRequested)
+            return Stop(OperationStatus.Cancelled, "Cancelled before anything was changed.");
+
+        Step($"Creating a {ByteSize.Format(order.SizeBytes)} Recovery partition at {ByteSize.Format(order.OffsetBytes)}…");
+        BackendResult result;
+        try { result = await operations.CreateRecoveryPartitionAsync(disk, order.OffsetBytes, order.SizeBytes); }
+        catch (Exception ex) { result = new BackendResult(false, ex.Message); }
+        if (result.Error is { } error) Step($"Windows reported a problem: {error}");
+
+        InventorySnapshot? after = null;
+        try { after = await inventory.GetSnapshotAsync(CancellationToken.None); Step("Re-read the disk to check the result."); }
+        catch (Exception ex) { Step($"Could not re-read the disk afterwards ({ex.Message}). Check it in Windows Disk Management."); }
+
+        var created = after?.Disks.FirstOrDefault(d => d.Number == order.DiskNumber)?.Partitions.FirstOrDefault(p => p.OffsetBytes == order.OffsetBytes);
+        if (result.Done && created is { Kind: PartitionKind.Recovery } && created.SizeBytes == order.SizeBytes)
+            return Stop(OperationStatus.Succeeded, $"Created a {ByteSize.Format(created.SizeBytes)} Recovery partition.", after);
+        if (created is not null)
+            return Stop(OperationStatus.PartiallyApplied,
+                "A partition was created, but it is not exactly the expected Recovery partition. ShadowDisk did not try to undo anything. " +
+                "Check the disk in Windows Disk Management.", after);
+        return Stop(OperationStatus.Failed, $"Windows did not create the Recovery partition. {result.Error ?? "No reason was given."}", after);
     }
 
     /// <summary>Changes (or assigns) a data volume's drive letter.</summary>

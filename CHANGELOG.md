@@ -11,6 +11,10 @@
   and an explanation when a volume can't be extended (e.g. Recovery sits after C:).
 - **Copy & verify** (Stage 5 part 1): copy a drive's files to a new folder on another drive and check
   every file's SHA-256 checksum; never overwrites or deletes.
+- **Give space to C:** (Stage 5 part 4): the give-space wizard can also move a Recovery partition — Windows
+  Recovery off with reagentc, recreate the Recovery partition (≥ 1 GiB) after the extended volume, back on.
+  Extending the Windows volume is now allowed (only extending). Full MBR disks remove Recovery first.
+  New MBR practice disk shaped like a Windows disk, with simulated Windows Recovery.
 - **Give space from the next volume** (Stage 5 part 3): a step-by-step wizard that moves the next volume's
   files (verified copy), deletes and recreates it further along the disk, and extends the selected volume.
   The recreated volume keeps its original label.

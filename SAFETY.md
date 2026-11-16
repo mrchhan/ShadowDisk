@@ -32,7 +32,10 @@ will never claim otherwise.
 
 Real changes are enabled on ShadowDisk practice disks (virtual disk files ShadowDisk creates).
 Real disks stay read-only unless you switch on **Real disk changes** for the current session; even
-then only data volumes can be changed, and C: and system partitions stay protected. Each operation
+then only data volumes can be changed. The Windows volume (C:) may only be **extended** (never shrunk,
+deleted or given another letter), and System Reserved, EFI and MSR stay protected. A Recovery partition
+is only moved by the give-space wizard, and only after Windows Recovery is turned off and its image is
+confirmed safe on C:. Each operation
 is documented in [docs/OPERATIONS.md](docs/OPERATIONS.md) before it is enabled.
 
 ## Versions 0.1 and 0.2

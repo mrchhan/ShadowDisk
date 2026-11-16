@@ -27,6 +27,49 @@ public sealed class WindowsDiskOperations(OperationPolicy policy) : IDiskOperati
     public Task<BackendResult> SetDriveLetterAsync(PhysicalDisk disk, int partitionNumber, long offsetBytes, string? oldLetter, string newLetter) =>
         Task.Run(() => SetLetter(disk, partitionNumber, offsetBytes, oldLetter, newLetter));
 
+    /// <summary>
+    /// Creates a Recovery partition the way Microsoft documents it (KB5028997), with diskpart:
+    /// "create partition primary … id=27" (MBR) or "id=de94bba4-…" (GPT), "format quick fs=ntfs label=…",
+    /// then "set id=…" again (format resets the MBR type) and, on GPT, "gpt attributes=0x8000000000000001". The disk is selected by its file for practice disks, and by number
+    /// for real disks only after its identifier was checked again. No drive letter is given.
+    /// </summary>
+    public async Task<BackendResult> CreateRecoveryPartitionAsync(PhysicalDisk disk, long offsetBytes, long sizeBytes)
+    {
+        if (!Elevation.IsElevated()) return new(false, "Administrator rights are needed.");
+        if (offsetBytes % (1024 * 1024) != 0 || sizeBytes % (1024 * 1024) != 0)
+            return new(false, "Refused: the Recovery partition must start and end on a whole MiB.");
+        var refusal = await Task.Run(() => CheckLiveDisk(disk, null, out _));
+        if (refusal is not null) return new(false, refusal);
+
+        var select = policy.IsPracticeDisk(disk)
+            ? $"select vdisk file=\"{disk.Location}\""
+            : $"select disk {disk.Number.ToString(CultureInfo.InvariantCulture)}";
+        var sizeMiB = (sizeBytes / (1024 * 1024)).ToString(CultureInfo.InvariantCulture);
+        var offsetKiB = (offsetBytes / 1024).ToString(CultureInfo.InvariantCulture);
+        // Formatting resets an MBR partition's type to 07 (NTFS), so the Recovery type is set again AFTER the
+        // format, as in Microsoft's MBR/BIOS recovery-partition sample. The runner then reads the disk back and
+        // only reports success if Windows lists a Recovery partition at exactly this place and size.
+        var id = disk.Style == PartitionStyle.Gpt ? StorageMapper.GptRecovery.Trim('{', '}') : "27";
+        var commands = new List<string>
+        {
+            select,
+            $"create partition primary size={sizeMiB} offset={offsetKiB} id={id}",
+            "format quick fs=ntfs label=\"Windows RE tools\"",
+            $"set id={id} override",
+        };
+        if (disk.Style == PartitionStyle.Gpt) commands.Add("gpt attributes=0x8000000000000001");
+        try
+        {
+            await DiskPart.RunAsync([.. commands]);
+            await Task.Run(Wmi.RefreshStorageCache);   // so the read-back sees what diskpart did
+            return new(true, null);
+        }
+        catch (InvalidOperationException ex)
+        {
+            return new(false, ex.Message);
+        }
+    }
+
     /// <summary>One call to MSFT_Partition.DeleteObject (the API behind Remove-Partition).</summary>
     private BackendResult Delete(PhysicalDisk disk, int partitionNumber, long offsetBytes)
     {
@@ -82,7 +125,7 @@ public sealed class WindowsDiskOperations(OperationPolicy policy) : IDiskOperati
     {
         if (!Elevation.IsElevated())
             return new(false, "Administrator rights are needed. Use “Restart as administrator”.");
-        var refusal = CheckLiveDisk(disk, partitionNumber, out var scope);
+        var refusal = CheckLiveDisk(disk, partitionNumber, out var scope, extendTo: targetSizeBytes);
         if (refusal is not null) return new(false, refusal);
 
         using var partition = Wmi.Partition(scope!, disk.Number, partitionNumber);
@@ -99,9 +142,11 @@ public sealed class WindowsDiskOperations(OperationPolicy policy) : IDiskOperati
     /// Independent check, made right before the first Windows call, that the live disk is the one that
     /// was checked: same number and identifier; for a practice disk also the same file; for a real disk,
     /// real-disk changes must be on and the target partition must not be the Windows or start-up partition.
+    /// The one exception is <paramref name="extendTo"/>: the Windows partition itself (boot, not system) may be
+    /// made BIGGER. Shrinking, deleting or relettering it is always refused here.
     /// Returns a refusal reason, or null when it is safe to continue.
     /// </summary>
-    private string? CheckLiveDisk(PhysicalDisk disk, int? partitionNumber, out ManagementScope? scope)
+    private string? CheckLiveDisk(PhysicalDisk disk, int? partitionNumber, out ManagementScope? scope, long? extendTo = null)
     {
         scope = null;
         var practice = policy.IsPracticeDisk(disk);
@@ -123,7 +168,11 @@ public sealed class WindowsDiskOperations(OperationPolicy policy) : IDiskOperati
             using var part = Wmi.Partition(scope, disk.Number, number);
             if (part is null)
                 return "The partition is no longer present.";
-            if (Wmi.ToBool(part["IsBoot"]) || Wmi.ToBool(part["IsSystem"]))
+            var isBoot = Wmi.ToBool(part["IsBoot"]);
+            var isSystem = Wmi.ToBool(part["IsSystem"]);
+            var growingWindows = isBoot && !isSystem && extendTo is { } size
+                                 && size > Convert.ToInt64(part["Size"], CultureInfo.InvariantCulture);
+            if ((isBoot || isSystem) && !growingWindows)
                 return "Refused: Windows reports this partition as its boot or system partition.";
         }
         return null;
@@ -141,20 +190,45 @@ public sealed class WindowsDiskOperations(OperationPolicy policy) : IDiskOperati
             return new(false, false, null, "The disk is no longer present.");
 
         // Step 1: create the partition (no drive letter yet, so Explorer doesn't pop up a "format?" prompt).
-        var (createCode, createOut) = Wmi.Invoke(live, "CreatePartition", p =>
+        int partitionNumber;
+        var existing = Wmi.All(scope, "MSFT_Partition").Count(p => Wmi.ToInt(p["DiskNumber"]) == disk.Number);
+        if (disk.Style == PartitionStyle.Mbr && existing == 3)
         {
-            p["Size"] = (ulong)sizeBytes;
-            p["Offset"] = (ulong)offsetBytes;
-            p["AssignDriveLetter"] = false;
-            if (disk.Style == PartitionStyle.Gpt) p["GptType"] = StorageMapper.GptBasicData;
-            else p["MbrType"] = (ushort)7;
-        });
-        if (createCode != 0)
-            return new(false, false, null, "Creating the partition failed: " + Wmi.Explain(createCode));
-
-        var partitionNumber = createOut?["CreatedPartition"] is ManagementBaseObject created
-            ? Wmi.ToInt(created["PartitionNumber"])
-            : FindPartitionAt(scope, disk.Number, offsetBytes);
+            // The Storage API refuses a FOURTH primary partition on an MBR disk ("not supported"; Windows' own
+            // tools would switch to an extended partition). diskpart creates it as a primary partition, exactly
+            // as asked. Formatting and the drive letter are still done through the Storage API below.
+            var select = policy.IsPracticeDisk(disk)
+                ? $"select vdisk file=\"{disk.Location}\""
+                : $"select disk {disk.Number.ToString(CultureInfo.InvariantCulture)}";
+            try
+            {
+                DiskPart.RunAsync(select,
+                    $"create partition primary size={(sizeBytes / (1024 * 1024)).ToString(CultureInfo.InvariantCulture)} " +
+                    $"offset={(offsetBytes / 1024).ToString(CultureInfo.InvariantCulture)} id=07").GetAwaiter().GetResult();
+            }
+            catch (InvalidOperationException ex)
+            {
+                return new(false, false, null, "Creating the partition failed: " + ex.Message);
+            }
+            Wmi.RefreshStorageCache();
+            partitionNumber = FindPartitionAt(scope, disk.Number, offsetBytes);
+        }
+        else
+        {
+            var (createCode, createOut) = Wmi.Invoke(live, "CreatePartition", p =>
+            {
+                p["Size"] = (ulong)sizeBytes;
+                p["Offset"] = (ulong)offsetBytes;
+                p["AssignDriveLetter"] = false;
+                if (disk.Style == PartitionStyle.Gpt) p["GptType"] = StorageMapper.GptBasicData;
+                else p["MbrType"] = (ushort)7;
+            });
+            if (createCode != 0)
+                return new(false, false, null, "Creating the partition failed: " + Wmi.Explain(createCode));
+            partitionNumber = createOut?["CreatedPartition"] is ManagementBaseObject created
+                ? Wmi.ToInt(created["PartitionNumber"])
+                : FindPartitionAt(scope, disk.Number, offsetBytes);
+        }
         if (partitionNumber < 0)
             return new(true, false, null, "The partition was created but Windows did not report its number.");
 
@@ -182,6 +256,8 @@ public sealed class WindowsDiskOperations(OperationPolicy policy) : IDiskOperati
         using var partition = Wmi.Partition(scope, disk.Number, partitionNumber);
         if (partition is null)
             return new(true, true, null, "The volume was created and formatted, but the partition could not be found to give it a drive letter.");
+        if (partition["DriveLetter"] is char had && char.IsLetter(had))
+            return new(true, true, char.ToUpper(had, CultureInfo.InvariantCulture).ToString(), null);   // Windows already gave it one
         var (letterCode, _) = Wmi.Invoke(partition, "AddAccessPath", p => p["AssignDriveLetter"] = true);
         if (letterCode != 0)
             return new(true, true, null, "The volume was created and formatted, but Windows could not give it a drive letter: " + Wmi.Explain(letterCode));

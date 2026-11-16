@@ -7,9 +7,9 @@ namespace ShadowDisk.Core.Operations;
 ///
 /// • ShadowDisk practice disks (virtual disk files in the practice folder): always allowed.
 /// • Real disks: only when the user has switched on "real disk changes" for this session, and then
-///   only for data volumes. The partition Windows runs from, its start-up partition, EFI, MSR and
-///   recovery partitions stay protected. Extra checks apply: mains power, volume health and known
-///   BitLocker status.
+///   only for data volumes. The one exception: the partition Windows runs from (C:) may be EXTENDED
+///   (never shrunk, deleted or relettered). Its start-up partition, EFI and MSR stay protected.
+///   Extra checks apply: mains power, volume health and known BitLocker status.
 /// </summary>
 public sealed class OperationPolicy(string practiceFolder)
 {
@@ -30,8 +30,9 @@ public sealed class OperationPolicy(string practiceFolder)
     /// Reasons the change may not be made. Empty means it is allowed.
     /// <paramref name="target"/> is the partition being resized, or null when creating a volume in free space.
     /// <paramref name="onMainsPower"/> is true/false when known, null when Windows can't tell.
+    /// <paramref name="extend"/> is true only when <paramref name="target"/> is being extended (made bigger).
     /// </summary>
-    public IReadOnlyList<string> WhyNotAllowed(PhysicalDisk disk, Partition? target = null, bool? onMainsPower = null)
+    public IReadOnlyList<string> WhyNotAllowed(PhysicalDisk disk, Partition? target = null, bool? onMainsPower = null, bool extend = false)
     {
         var reasons = new List<string>();
         var practice = IsPracticeDisk(disk);
@@ -47,7 +48,7 @@ public sealed class OperationPolicy(string practiceFolder)
         }
         else
         {
-            if (target is not null && (target.IsBoot || target.IsSystem || target.IsStartupPartition))
+            if (target is not null && (target.IsBoot || target.IsSystem || target.IsStartupPartition) && !(extend && IsExtendableWindowsVolume(target)))
                 reasons.Add($"{target.DisplayName} holds Windows or the files your PC needs to start. Changes to it are not enabled in this version.");
             if (target?.Volume is { } v)
             {
@@ -69,6 +70,14 @@ public sealed class OperationPolicy(string practiceFolder)
         if (string.IsNullOrWhiteSpace(disk.UniqueId)) reasons.Add("Windows did not report an identifier for this disk, so ShadowDisk can't be sure it is the same disk.");
         return reasons;
     }
+
+    /// <summary>
+    /// The Windows volume (C:) itself: Windows runs from it and it is an ordinary NTFS data partition.
+    /// Extending it is the same operation Windows Disk Management offers. Start-up partitions
+    /// (System Reserved, EFI) never qualify, even if Windows also reports them as boot.
+    /// </summary>
+    public static bool IsExtendableWindowsVolume(Partition p) =>
+        p.IsBoot && !p.IsStartupPartition && p.Kind == PartitionKind.Basic && p.Volume?.FileSystem == "NTFS" && p.Volume.DriveLetter is { Length: > 0 };
 
     private static string Normalize(string path)
     {

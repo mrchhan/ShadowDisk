@@ -182,48 +182,57 @@ by hand with the individual tools. (v1 does not yet resume the wizard itself aft
 declining the delete, a failed copy stopping before any delete, and the planner's refusals
 (Windows volume, Recovery in the way, free space already after the target, donor too full).
 
-## Planned: Give space to C: (Stage 5)
+## Give space to C: (Stage 5, part 4 — built)
 
-**Status:** design only. Nothing below is built. It will be built and proven on practice disks first.
+Same wizard as part 3 (**Give space from the next volume…**), extended so a **Recovery partition**
+between the selected volume and the next one can be moved too. Select C: and click the button.
 
-**Why it's needed:** on a disk laid out as `System | C: | Recovery | E: | free`, space freed from E:
-lands at the end of the disk, and C: can only grow into space directly after it. Recovery and E: are
-in the way.
+**Why it's needed:** on a disk laid out as `System | C: | Recovery | E:`, C: can only grow into space
+directly after it, and both Recovery and E: are in the way.
 
-**Why not move partitions block by block** (the way many partition tools do): if power fails while a
-partition is being moved, the half-moved partition can be lost. ShadowDisk instead uses only
-operations Windows supports, each of which either completes or fails cleanly, plus a file copy that is
-verified before anything is deleted.
+**Why not move partitions block by block** (as many partition tools do): if power fails while a
+partition is being moved, the half-moved partition can be lost. ShadowDisk uses only operations Windows
+supports, each of which completes or fails as a whole, plus a file copy verified before anything is deleted.
 
-**Steps (a guided wizard, one step at a time, each confirmed):**
-1. **Check:** mains power, C: and E: healthy (`chkdsk` scan, read-only), BitLocker status known,
-   enough room (E:'s used data must fit in the space a shrink can free), and a full backup confirmed.
-2. **Shrink E:** to its data plus headroom. The freed space appears at the end of the disk.
-3. **Create a temporary volume** ("E-new") in that freed space.
-4. **Copy every file** from E: to E-new with file attributes and timestamps, then **verify**: same
-   file count, same total size, and a SHA-256 checksum of every file. Any mismatch stops the wizard;
-   E: is untouched and the copy can simply be deleted.
-5. **Delete E:** only after verification passes, and only after the user confirms again.
-6. **Move Recovery** the documented Microsoft way: `reagentc /disable` (Windows keeps WinRE inside
-   C:), delete the old Recovery partition, create a new one at the end of the free space, copy WinRE
-   back and `reagentc /enable`. If any part fails, WinRE stays safely inside C:, which still works.
-7. **Extend C:** into the space now directly after it (Windows supports extending its own volume
-   while running).
-8. **Rename E-new to E:** so apps and shortcuts find their files again.
+**Before it starts, the plan is refused if:**
+* the Recovery partition is bigger than 2 GiB (it may hold the PC maker's factory image), or
+* `reagentc /info` does not say Windows Recovery is on **that** partition (it may hold other tools), or
+  Windows Recovery is off (so its contents can't be confirmed), or
+* the target is a start-up partition (System Reserved / EFI). The Windows volume itself may only be
+  **extended**: shrinking, deleting or relettering C: stays blocked, in the policy and again in the Windows backend.
 
-**Time:** dominated by copying E:'s *used* data (twice for verification: copy, then checksum). On a
-laptop hard disk expect roughly 30–60 minutes for ~45 GB. Moving partitions with other tools also
-copies all used data.
+**Steps** (each one re-reads the disk, runs once, and is read back):
+1. Shrink E: if needed, create a temporary volume at the end, copy & verify E:'s files, delete the old E:
+   (typed `DELETE E`). Same as part 3.
+2. **Turn off Windows Recovery** — `reagentc /disable`, which moves `Winre.wim` into
+   `C:\Windows\System32\Recovery`. ShadowDisk then checks that reagentc reports it off **and** that the image
+   file is there. If not, it stops and the Recovery partition is not touched.
+3. **Delete the old Recovery partition** (only while the image is confirmed on C:).
+4. **Extend C:**, leaving exactly enough room after it for the new Recovery partition.
+5. **Create a new Recovery partition** directly after C: with diskpart, as Microsoft KB5028997 does
+   (`id=27` on MBR; the Recovery GUID and `gpt attributes=0x8000000000000001` on GPT; quick NTFS format).
+   It is at least 1 GiB, so later Windows updates to WinRE have room.
+6. **Turn Windows Recovery back on** — `reagentc /enable` moves the image onto the new partition. ShadowDisk
+   checks where reagentc reports it.
+7. Give the temporary volume E:'s letter.
 
-**What can go wrong, and the state it leaves:**
-* Failure in steps 1–4: nothing on C: or E: has changed except E: being smaller; remove E-new and
-  extend E: back.
-* Failure in step 6: WinRE remains inside C: (Windows still boots and can still reach recovery
-  options); ShadowDisk shows the exact `reagentc` status.
-* Failure in step 7: C: keeps its old size; the free space stays unallocated and can be used later.
-* Power loss: each step is a separate Windows operation that completes or fails as a whole; the
-  wizard re-reads the disk on next start and shows which step was last completed.
+**Full MBR disks:** an MBR disk holds at most four partitions. With `System Reserved | C: | Recovery | E:` there
+is no slot for the temporary volume, so steps 2–3 run **first** and Windows Recovery stays off during the copy.
+The wizard says so before you start.
+
+**If the space after Recovery is already free** (for example after shrinking E: earlier), there is nothing to
+copy: only steps 2–6 run.
+
+**If a step fails while Windows Recovery is off,** the wizard stops and says so. Windows still starts normally;
+the image is safe in `C:\Windows\System32\Recovery`. Run `reagentc /enable` as administrator to turn Windows
+Recovery back on (it then lives on C:), or try the step again.
+
+**Practice first:** “New practice disk” → **No** creates an MBR practice disk shaped like this
+(`Practice System | Practice Windows | Recovery | Practice data`). Windows Recovery is *simulated* on practice
+disks; reagentc is only used for the real Windows disk.
+
+**Time:** dominated by copying E:'s used data twice (copy, then checksum).
 
 ## Not yet enabled
-* Changes to the Windows volume (C:) and system partitions (Stage 5 will allow *extending* C: only).
-* Give space to C: (Stage 5, designed above).
+* Shrinking, deleting or relettering the Windows volume (C:); any change to System Reserved, EFI or MSR.
+* Resuming the give-space wizard after ShadowDisk is closed (finish the remaining steps by hand, or start again).

@@ -13,6 +13,7 @@ using ShadowDisk.Core.Operations;
 using ShadowDisk.Core.Planning;
 using ShadowDisk.Core.Reporting;
 using ShadowDisk.Core.Safety;
+using ShadowDisk.Core.Recovery;
 using ShadowDisk.Core.Wizard;
 using ShadowDisk.Windows;
 
@@ -84,7 +85,10 @@ public sealed class MainViewModel : ObservableObject
     public RelayCommand ChangeLetterCommand { get; }
     public RelayCommand GiveSpaceCommand { get; }
 
-    /// <summary>Stage 5 part 3: give space to the selected volume from the volume directly after it.</summary>
+    /// <summary>
+    /// Stage 5 parts 3 and 4: give space to the selected volume from what follows it — the next volume,
+    /// and/or a Recovery partition (which is moved with Windows Recovery turned off and back on).
+    /// </summary>
     private async Task GiveSpaceAsync()
     {
         if (SelectedDisk is not { } item || SelectedRow?.Region.Partition is not { Volume: not null } target) return;
@@ -92,28 +96,53 @@ public sealed class MainViewModel : ObservableObject
         if (!IsElevated) { Info("This needs administrator rights. Click “Restart as administrator” first."); return; }
 
         var layout = item.Layout;
-        var regions = layout.Regions.Where(r => r.Kind != RegionKind.Gap).ToList();
-        var donor = regions.SkipWhile(r => !ReferenceEquals(r.Partition, target)).Skip(1).FirstOrDefault()?.Partition;
+        var after = layout.Regions.Where(r => r.Kind != RegionKind.Gap)
+            .SkipWhile(r => !ReferenceEquals(r.Partition, target)).Skip(1).Take(2).Select(r => r.Partition).ToList();
+        var recoveryPart = after.FirstOrDefault() is { Kind: PartitionKind.Recovery } rp ? rp : null;
+        var donor = (recoveryPart is null ? after.FirstOrDefault() : after.Skip(1).FirstOrDefault()) is { Volume: not null } dp ? dp : null;
 
-        IsBusy = true;
-        StatusText = "Asking Windows how far the next volume can shrink…";
+        IRecoveryEnvironment? recovery = null;
+        RecoveryStatus? recoveryStatus = null;
         SizeLimits? limits = null;
+        IsBusy = true;
         try
         {
-            if (donor?.Volume is not null)
+            if (recoveryPart is not null)
+            {
+                StatusText = "Asking Windows where Windows Recovery is (reagentc /info)…";
+                recovery = _policy.IsPracticeDisk(item.Disk)
+                    ? new SimulatedRecoveryEnvironment(new WindowsStorageInventory(), item.Disk.Number, item.Disk.UniqueId)
+                    : new ReAgentRecoveryEnvironment();
+                try
+                {
+                    recoveryStatus = await recovery.GetStatusAsync(CancellationToken.None);
+                    AppServices.Log.Info("Windows Recovery: " + recoveryStatus.Details);
+                }
+                catch (Exception ex)
+                {
+                    AppServices.Log.Warning("Could not read Windows Recovery status: " + ex.Message);
+                }
+            }
+            if (donor is not null)
+            {
+                StatusText = "Asking Windows how far the next volume can shrink…";
                 limits = await new WindowsPartitionLimitsProvider().GetLimitsAsync(layout, donor, PlanKind.ShrinkVolume, CancellationToken.None);
+            }
         }
         finally { IsBusy = false; StatusText = ""; }
 
-        var plan = GiveSpacePlanner.Plan(layout, target, limits);
+        var plan = GiveSpacePlanner.Plan(layout, target, limits, recoveryStatus);
         if (!plan.IsPossible) { Info(string.Join("\n\n", plan.Problems)); return; }
         var power = PowerStatus.IsOnMainsPower();
-        var reasons = _policy.WhyNotAllowed(item.Disk, plan.Donor, power).Concat(_policy.WhyNotAllowed(item.Disk, target, power)).Distinct().ToList();
+        var reasons = _policy.WhyNotAllowed(item.Disk, target, power, extend: true).ToList();
+        if (plan.Donor is not null) reasons.AddRange(_policy.WhyNotAllowed(item.Disk, plan.Donor, power));
+        if (plan.Recovery is not null) reasons.AddRange(_policy.WhyNotAllowed(item.Disk, plan.Recovery, power));
+        reasons = reasons.Distinct().ToList();
         if (reasons.Count > 0) { Info(string.Join("\n\n", reasons)); return; }
 
         var window = new GiveSpaceWindow(plan, give => new GiveSpaceWizard(plan, give, new WindowsStorageInventory(), NewRunner(),
             new WindowsPartitionLimitsProvider(), l => $@"{l}:\",
-            (s, d, resume, p, ct) => new VerifiedCopy(AppServices.Log).CopyAndVerifyAsync(s, d, p, ct, resume), AppServices.Log))
+            (s, d, resume, p, ct) => new VerifiedCopy(AppServices.Log).CopyAndVerifyAsync(s, d, p, ct, resume), AppServices.Log, recovery))
         { Owner = Application.Current.MainWindow };
         window.ShowDialog();
         if (window.ChangedDisk) await RefreshAsync();
@@ -514,17 +543,23 @@ public sealed class MainViewModel : ObservableObject
             return;
         }
         var answer = MessageBox.Show(
-            "ShadowDisk will create a 1 GiB practice disk: a virtual disk file in\n" + PracticeDiskService.Folder +
-            "\n\nWindows will show it as a new, empty disk. Your real disks are not touched. The file grows only as it is used, " +
-            "and you can remove it any time with “Remove practice disks”.\n\nCreate it now?",
-            "ShadowDisk — new practice disk", MessageBoxButton.YesNo, MessageBoxImage.Question, MessageBoxResult.No);
-        if (answer != MessageBoxResult.Yes) return;
+            "ShadowDisk will create a practice disk: a virtual disk file in\n" + PracticeDiskService.Folder +
+            "\n\nWhich kind?\n\n" +
+            "• Yes — an empty 1 GiB practice disk (GPT).\n\n" +
+            "• No — a practice disk shaped like a Windows PC disk: MBR with four partitions, “Practice System”, " +
+            "“Practice Windows” (a stand-in for C:), a Recovery partition and “Practice data” (about 6 GiB; the file only grows as it is used). " +
+            "Use it to try “Give space from the next volume…” on the Practice Windows drive. Windows Recovery on it is simulated.\n\n" +
+            "• Cancel — don't create anything.\n\nYour real disks are not touched. Remove practice disks any time with “Remove practice disks”.",
+            "ShadowDisk — new practice disk", MessageBoxButton.YesNoCancel, MessageBoxImage.Question, MessageBoxResult.Cancel);
+        if (answer == MessageBoxResult.Cancel) return;
 
         IsBusy = true;
         try
         {
             var progress = new Progress<string>(s => StatusText = s);
-            var path = await _practice.CreateAsync(1024, progress);
+            var path = answer == MessageBoxResult.Yes
+                ? await _practice.CreateAsync(1024, progress)
+                : await _practice.CreateWindowsLikeAsync(progress);
             AppServices.Log.Info($"Practice disk created: {System.IO.Path.GetFileName(path)}.");
             if (Source != SourceLive) Source = SourceLive; // also refreshes
         }

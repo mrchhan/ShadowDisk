@@ -10,15 +10,20 @@ using ShadowDisk.Core.Wizard;
 namespace ShadowDisk.App;
 
 /// <summary>
-/// "Give space to the drive before" wizard (Stage 5, part 3). The user chooses how much to give, confirms once,
+/// "Give space to the drive before" wizard (Stage 5, parts 3 and 4: also moves a Recovery partition). The user chooses how much to give, confirms once,
 /// then runs each step with "Run next step". The delete step asks for its own typed confirmation.
 /// </summary>
+internal static class OperationPolicyText
+{
+    public static bool IsWindows(GiveSpacePlan plan) => Core.Operations.OperationPolicy.IsExtendableWindowsVolume(plan.Target);
+}
+
 public sealed class GiveSpaceWindow : Window
 {
     private readonly GiveSpacePlan _plan;
     private readonly Func<long, GiveSpaceWizard> _createWizard;
     private readonly string _target;
-    private readonly string _donor;
+    private readonly string? _donor;
     private readonly Slider _slider = new() { SmallChange = 1, LargeChange = 1024, IsMoveToPointEnabled = true, Margin = new Thickness(0, 4, 0, 4) };
     private readonly TextBlock _amount = new() { FontWeight = FontWeights.SemiBold, TextWrapping = TextWrapping.Wrap };
     private readonly StackPanel _stepsPanel = new() { Margin = new Thickness(0, 10, 0, 6) };
@@ -38,7 +43,7 @@ public sealed class GiveSpaceWindow : Window
         _plan = plan;
         _createWizard = createWizard;
         _target = plan.Target.DisplayName;
-        _donor = plan.Donor!.DisplayName;
+        _donor = plan.Donor?.DisplayName;
 
         Title = $"ShadowDisk — give space to {_target}";
         Width = 640;
@@ -49,19 +54,38 @@ public sealed class GiveSpaceWindow : Window
         FontSize = 13;
 
         var panel = new StackPanel { Margin = new Thickness(20) };
+        var inTheWay = (plan.Recovery, _donor) switch
+        {
+            (not null, not null) => $"the Recovery partition and {_donor} are",
+            (not null, null) => "the Recovery partition is",
+            _ => $"{_donor} is",
+        };
+        var how = new List<string>();
+        if (_donor is not null)
+            how.Add($"moves {_donor}'s files to a new volume further along the disk and checks every file");
+        if (plan.Recovery is not null)
+            how.Add("turns Windows Recovery off, moves the Recovery partition to just after the bigger " + _target + " and turns Windows Recovery back on");
         panel.Children.Add(new TextBlock
         {
-            Text = $"Windows can only grow {_target} into free space directly after it, and {_donor} is in the way. " +
-                   $"This wizard moves {_donor}'s files to a new volume further along the disk, checks every file, " +
-                   $"then gives the freed space to {_target}. {_donor} keeps its letter. Each step is checked again before it runs.",
+            Text = $"Windows can only grow {_target} into free space directly after it, and {inTheWay} in the way. " +
+                   $"This wizard {string.Join(", and ", how)}. " +
+                   (_donor is null ? "" : $"{_donor} keeps its letter. ") + "Each step is checked again before it runs.",
             TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 0, 0, 10),
         });
+        var facts = $"{_target} {ByteSize.Format(plan.Target.SizeBytes)}";
+        if (plan.Recovery is { } rec) facts += $"    Recovery {ByteSize.Format(rec.SizeBytes)}";
+        if (plan.Donor is { } d)
+            facts += $"    {_donor} {ByteSize.Format(d.SizeBytes)} ({ByteSize.Format(plan.DonorUsedBytes)} of files; they need about {ByteSize.Format(plan.NeededForDonorFiles)})";
         panel.Children.Add(new TextBlock
         {
-            Text = $"{_target} {ByteSize.Format(plan.Target.SizeBytes)}    {_donor} {ByteSize.Format(plan.Donor.SizeBytes)} " +
-                   $"({ByteSize.Format(plan.DonorUsedBytes)} of files; they need about {ByteSize.Format(plan.NeededForDonorFiles)})",
-            Foreground = new SolidColorBrush(Color.FromRgb(0x4B, 0x55, 0x63)), TextWrapping = TextWrapping.Wrap,
+            Text = facts, Foreground = new SolidColorBrush(Color.FromRgb(0x4B, 0x55, 0x63)), TextWrapping = TextWrapping.Wrap,
         });
+        foreach (var note in plan.Notes ?? [])
+            panel.Children.Add(new TextBlock
+            {
+                Text = "⚠  " + note, TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 6, 0, 0),
+                Foreground = new SolidColorBrush(Color.FromRgb(0x92, 0x40, 0x0E)),
+            });
 
         panel.Children.Add(new TextBlock { Text = $"How much space to give to {_target}?", Margin = new Thickness(0, 12, 0, 0) });
         _slider.Minimum = plan.MinGive / (double)ByteSize.MiB;
@@ -70,7 +94,10 @@ public sealed class GiveSpaceWindow : Window
         _slider.ValueChanged += (_, _) => UpdateAmount();
         panel.Children.Add(_slider);
         panel.Children.Add(_amount);
-        panel.Children.Add(_stepsPanel);
+        panel.Children.Add(new ScrollViewer
+        {
+            Content = _stepsPanel, MaxHeight = 320, VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
+        });
         panel.Children.Add(_bar);
         panel.Children.Add(_status);
 
@@ -112,9 +139,7 @@ public sealed class GiveSpaceWindow : Window
 
     private void UpdateAmount()
     {
-        var give = GiveBytes;
-        _amount.Text = $"{_target} grows by {ByteSize.Format(give)} to about {ByteSize.Format(_plan.Target.SizeBytes + give)}. " +
-                       $"The new {_donor} will be about {ByteSize.Format(_plan.AreaBytes - give)}.";
+        _amount.Text = _plan.Describe(GiveBytes);
     }
 
     private void ShowSteps()
@@ -151,22 +176,27 @@ public sealed class GiveSpaceWindow : Window
     private void Start()
     {
         var give = GiveBytes;
+        var facts = new List<string> { $"{_target} grows by {ByteSize.Format(give)}." };
+        if (_donor is not null)
+            facts.Add($"{_donor}'s files are copied to a new volume and every file is checked before the old {_donor} is deleted.");
+        if (_plan.Recovery is not null)
+            facts.Add("Windows Recovery is turned off with Microsoft's reagentc tool, the Recovery partition is recreated after " +
+                      $"{_target}, and Windows Recovery is turned back on. Its image is checked to be safe on the Windows drive first.");
+        facts.Add("Each step is confirmed by you with “Run next step”; deleting a volume asks for its own confirmation.");
+        facts.Add("No disk tool can guarantee that data is never lost. A power cut or a failing drive during a step can cause data loss.");
+        var backup = OperationPolicyText.IsWindows(_plan)
+            ? "I have a full backup of this PC (for example a system image) and my important files."
+            : _donor is null ? $"I have a backup of {_target}'s important files (or this is a test disk)."
+            : $"I have a separate backup of {_donor}'s important files (or this is a test disk).";
         var confirm = new ConfirmDeleteWindow(
-            $"This will change the disk in several steps and, after verifying a copy of its files, delete and recreate {_donor}.",
-            [
-                $"{_target} grows by {ByteSize.Format(give)}.",
-                $"{_donor}'s files are copied to a new volume and every file is checked before the old {_donor} is deleted.",
-                "Each step is confirmed by you with “Run next step”; deleting asks for its own confirmation.",
-                "No disk tool can guarantee that data is never lost. A power cut or a failing drive during a step can cause data loss.",
-            ],
-            "GIVE SPACE",
-            $"I have a separate backup of {_donor}'s important files (or this is a test disk).",
-            "Start giving space", "Start")
+            _donor is null ? "This will change the disk in several steps." : $"This will change the disk in several steps and, after verifying a copy of its files, delete and recreate {_donor}.",
+            facts, "GIVE SPACE", backup, "Start giving space", "Start")
         { Owner = this };
         if (confirm.ShowDialog() != true) return;
 
         _wizard = _createWizard(give);
-        AppServices.Log.Info($"Give space: started — {ByteSize.Format(_wizard.GiveBytes)} from {_donor} to {_target}.");
+        AppServices.Log.Info($"Give space: started — {ByteSize.Format(_wizard.GiveBytes)} to {_target}" +
+                             (_plan.Recovery is null ? "" : ", moving Recovery") + (_donor is null ? "." : $", moving {_donor}."));
         _slider.IsEnabled = false;
         _start.Visibility = Visibility.Collapsed;
         _next.Visibility = Visibility.Visible;
@@ -214,11 +244,11 @@ public sealed class GiveSpaceWindow : Window
         }
 
         _status.Text = _wizard.IsFinished
-            ? $"Finished. {_target} now has the extra space and {_donor} holds its files under the same letter. Check both in Explorer."
+            ? $"Finished. {_target} now has the extra space" + (_donor is null ? "." : $" and {_donor} holds its files under the same letter. Check both in Explorer.")
             : step.State == Core.Wizard.StepState.Failed
                 ? "This step did not complete; the wizard has stopped. Read the message above. You can try the step again or close and finish later."
                 : "Done. Click “Run next step” to continue.";
-        if (_wizard.IsFinished) AppServices.Log.Info($"Give space: finished — {_target} extended, {_donor} recreated.");
+        if (_wizard.IsFinished) AppServices.Log.Info($"Give space: finished — {_target} extended.");
         ShowSteps();
     }
 
@@ -229,8 +259,8 @@ public sealed class GiveSpaceWindow : Window
         var dialog = new ConfirmDeleteWindow(
             $"Delete the old {letter}: now? Its files have been copied and verified.",
             [
-                copy is not null ? $"Verified copy: {copy.Files:N0} files, {ByteSize.Format(copy.Bytes)}, now on the temporary volume." : "Verified copy: see step 3.",
-                $"After this, {letter}:'s old space becomes free and is given to {_target} in the next step.",
+                copy is not null ? $"Verified copy: {copy.Files:N0} files, {ByteSize.Format(copy.Bytes)}, now on the temporary volume." : "Verified copy: see the copy step.",
+                $"After this, {letter}:'s old space becomes free and is given to {_target} in a later step.",
                 "This cannot be undone.",
             ],
             confirmText,

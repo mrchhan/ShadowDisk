@@ -142,7 +142,7 @@ public static class SafetyAnalyzer
         var next = index >= 0 ? regions.Skip(index + 1).FirstOrDefault(r => r.Kind != RegionKind.Gap) : null;
         if (next is { Partition: { } blocker })
             extend.Add($"{blocker.DisplayName} sits directly after {p.DisplayName}. Windows can only extend a volume into unallocated space " +
-                       $"directly after it, so {p.DisplayName} can't grow unless partitions are moved. Moving partitions is planned as a separate, later feature.");
+                       $"directly after it, so {p.DisplayName} can't grow unless partitions are moved. Use “Give space from the next volume…” below to move them.");
         else if (next is not { Kind: RegionKind.Unallocated })
             extend.Add($"There is no unallocated space directly after {p.DisplayName}, and Windows can only extend a volume into space directly after it.");
         else if (next.SizeBytes < MinimumUsefulSpace)

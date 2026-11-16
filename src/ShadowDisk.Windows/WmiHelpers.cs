@@ -46,6 +46,24 @@ internal static class Wmi
         return (code, output);
     }
 
+    /// <summary>
+    /// Asks the Storage service to re-read every disk (MSFT_StorageSetting.UpdateHostStorageCache, the API behind
+    /// Update-HostStorageCache). Changes made with diskpart are not always visible to the Storage API until then.
+    /// Read-only for the disks; failures are ignored.
+    /// </summary>
+    public static void RefreshStorageCache()
+    {
+        try
+        {
+            var scope = StorageScope();
+            using var setting = new ManagementClass(scope, new ManagementPath("MSFT_StorageSetting"), null);
+            setting.InvokeMethod("UpdateHostStorageCache", null, null);
+        }
+        catch (ManagementException) { }
+        catch (UnauthorizedAccessException) { }
+        catch (System.Runtime.InteropServices.COMException) { }
+    }
+
     public static int ToInt(object? value) => value is null ? -1 : Convert.ToInt32(value, CultureInfo.InvariantCulture);
     public static ushort ToUShort(object? value) => value is null ? (ushort)0 : Convert.ToUInt16(value, CultureInfo.InvariantCulture);
     public static bool ToBool(object? value) => value is bool b && b;

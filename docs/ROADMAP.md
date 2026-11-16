@@ -23,13 +23,13 @@ preconditions, rollback limits and tests on disposable virtual disks (VHDX):
 3. Shrink a volume
 MBR↔GPT conversion and merging partitions are not planned.
 
-## Stage 5: Give space to C: (design agreed, not built yet)
+## Stage 5: Give space to C: (built in v0.3 preview: parts 1–4)
 Goal: give free space from a later data volume (e.g. E:) to the Windows volume C:, which Windows'
 own tools can't do because a volume can only grow into space directly after it.
 
-ShadowDisk will do this **without moving data block by block**. It only uses operations Windows
-supports, plus a verified file copy. See the step-by-step design in
-[OPERATIONS.md](OPERATIONS.md#planned-give-space-to-c-stage-5).
+ShadowDisk does this **without moving data block by block**. It only uses operations Windows
+supports, plus a verified file copy, and moves the Recovery partition with Microsoft's reagentc tool.
+See [OPERATIONS.md](OPERATIONS.md#give-space-to-c-stage-5-part-4--built).
 
 ## Stage 4: Health, polish and recovery guidance
 - Detailed drive-health counters (`MSFT_StorageReliabilityCounter`), clearly separate from scans
