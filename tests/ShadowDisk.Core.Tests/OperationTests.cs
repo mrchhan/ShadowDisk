@@ -101,14 +101,17 @@ internal sealed class FakeDiskOperations(FakeInventory inventory) : IDiskOperati
         if (FailCompletely) return Task.FromResult(new CreateVolumeBackendResult(false, false, null, "Access denied"));
 
         var number = disk.Partitions.Count == 0 ? 1 : disk.Partitions.Max(p => p.PartitionNumber) + 1;
-        var volume = FailFormat ? null : new Volume("P", volumeLabel, "NTFS", sizeBytes, sizeBytes, ReportedHealth.Healthy, EncryptionState.NotEncrypted);
+        // Windows gives the first free letter; here that starts at P.
+        var used = inventory.Disks.SelectMany(d => d.Partitions).Select(p => p.Volume?.DriveLetter).ToHashSet();
+        var letter = "PQRSTUVWXYZ".Select(c => c.ToString()).First(l => !used.Contains(l));
+        var volume = FailFormat ? null : new Volume(letter, volumeLabel, "NTFS", sizeBytes, sizeBytes, ReportedHealth.Healthy, EncryptionState.NotEncrypted);
         var part = new Partition(disk.Number, number, offsetBytes, sizeBytes, PartitionKind.Basic, null, null, false, false, false, false, volume);
         var index = inventory.Disks.FindIndex(d => d.Number == disk.Number);
         inventory.Disks[index] = disk with { Partitions = disk.Partitions.Append(part).OrderBy(p => p.OffsetBytes).ToList() };
 
         return Task.FromResult(FailFormat
             ? new CreateVolumeBackendResult(true, false, null, "Format failed")
-            : new CreateVolumeBackendResult(true, true, "P", null));
+            : new CreateVolumeBackendResult(true, true, letter, null));
     }
 }
 

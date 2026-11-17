@@ -238,6 +238,34 @@ disks; reagentc is only used for the real Windows disk.
 reinstalling afterwards. Documents, photos and other plain files are not affected. The wizard says this before
 you start.
 
+## Drag to rebalance (move space between neighbouring drives)
+
+In **Bar** view, the line between two neighbouring data volumes has a grip. Drag it, like in other partition
+tools: the bar shows where the line will be and both new sizes. **Nothing changes on release**: the wizard opens
+with that amount chosen, and you confirm and run every step yourself.
+
+* **Drag right** (the left drive grows) → the give-space wizard (above): the right drive's files move further
+  along the disk as a verified copy.
+* **Drag left** (the right drive grows) → Windows can't grow a volume towards the start of the disk, so:
+  1. shrink the left drive;
+  2. shrink the right drive (keeping its files) to make room at its end;
+  3. create a temporary volume there and **copy & verify** the right drive's files into it;
+  4. delete the old right drive (typed `DELETE X`, only with the verified copy);
+  5. create the new, bigger right drive starting just after the smaller left drive;
+  6. **copy the files back and verify** them again;
+  7. delete the temporary volume (typed confirmation, only with the verified copy back);
+  8. extend the new drive over the rest and give it its old letter.
+
+  At every moment a verified copy of the files exists. The right drive must be less than about half full
+  (its files must fit at the end of its own space). Its files are copied twice, so this takes a while.
+
+**Why not move partitions block by block?** Many partition tools move the raw sectors. If power fails half-way,
+the half-moved partition is usually lost. ShadowDisk only uses steps that complete or fail as a whole, plus copies
+that are checked before anything is deleted.
+
+The Windows volume (C:) can only grow; its line can only be dragged towards the end of the disk, and that uses the
+give-space wizard (with the Recovery move where needed).
+
 ## Disk health and surface scan (Stage 4 — built, read-only)
 
 **Disk health…** (toolbar) opens a window for the selected disk.

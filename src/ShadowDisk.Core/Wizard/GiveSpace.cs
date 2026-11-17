@@ -153,7 +153,7 @@ public static class GiveSpacePlanner
                       "documents, photos and other plain files are not affected.");
 
         var used = donor?.Volume!.UsedBytes ?? 0;
-        var needed = donor is null ? 0 : Math.Max(PlanLimits.MinimumNewVolume, PlanLimits.AlignUp(used + Math.Max(used / 10, 256 * ByteSize.MiB)));
+        var needed = donor is null ? 0 : PlanLimits.NeededForCopy(used);
         var newRec = rec is null ? 0 : Math.Min(OperationRunner.MaxMovableRecoveryBytes, Math.Max(MinimumNewRecovery, PlanLimits.AlignUp(rec.SizeBytes)));
 
         // End of the rearranged space: the donor's end, or the end of the free space after it (or after Recovery).
@@ -172,10 +172,11 @@ public static class GiveSpacePlanner
         var slack = rec is null ? 0 : 2 * PlanLimits.Alignment;   // room for rounding each new start up to a whole MiB
 
         long minGive, maxGive;
+        long donorMin = 0;
         if (donor is not null)
         {
             // The donor's files stay in its first part while it is shrunk, so the copy must start after that.
-            var donorMin = donorShrinkLimits is { IsUsable: true } l ? PlanLimits.AlignUp(l.MinBytes) : donor.SizeBytes;
+            donorMin = donorShrinkLimits is { IsUsable: true } l ? PlanLimits.AlignUp(l.MinBytes) : donor.SizeBytes;
             minGive = Math.Max(PlanLimits.Alignment, PlanLimits.AlignUp(donorMin + (donor.OffsetBytes - spaceStart) - newRec));
             maxGive = PlanLimits.AlignDown(area - newRec - needed - slack);
         }
@@ -186,11 +187,17 @@ public static class GiveSpacePlanner
         }
 
         if (maxGive < minGive)
+        {
+            var whyMin = donor is null ? "" : donorMin >= donor.SizeBytes
+                ? $" Windows can't shrink {donor.DisplayName} at the moment, so all of it would have to be given at once."
+                : $" Windows can only shrink {donor.DisplayName} to {ByteSize.Format(donorMin)} (some of its files can't be moved by " +
+                  $"Windows, for example the NTFS log), so at least that much must be given, but only {ByteSize.Format(Math.Max(0, maxGive))} is left.";
             problems.Add(donor is not null
-                ? $"{donor.DisplayName} holds {ByteSize.Format(used)}. Its files need about {ByteSize.Format(needed)} of the " +
-                  $"{ByteSize.Format(area)} available{(rec is null ? "" : $", and the new Recovery partition needs {ByteSize.Format(newRec)}")}, " +
-                  $"which leaves too little to give. Free up space on {donor.DisplayName} or move some files to another drive first."
+                ? $"{donor.DisplayName} holds {ByteSize.Format(used)}. A safe copy of its files needs about {ByteSize.Format(needed)} of the " +
+                  $"{ByteSize.Format(area)} available{(rec is null ? "" : $", and the new Recovery partition needs {ByteSize.Format(newRec)}")}." +
+                  whyMin + $" Free up space on {donor.DisplayName}, move some files to another drive, or use a bigger volume."
                 : $"After keeping a {ByteSize.Format(newRec)} Recovery partition, too little of the {ByteSize.Format(area)} is left to give.");
+        }
 
         return new GiveSpacePlan(layout.Disk, target, donor, used, needed, area, minGive, maxGive, problems, rec, newRec, notes, recoveryFirst);
     }
@@ -203,6 +210,8 @@ public enum GiveSpaceStepKind
     ExtendTarget,
     CreateRecovery, EnableRecovery,
     RenameTemporary,
+    // Giving space to the NEXT volume (TakeSpaceWizard):
+    ShrinkGiver, ShrinkReceiver, CreateNewVolume, CopyBack, DeleteTemporary,
 }
 
 public enum StepState { Pending, Done, Failed, Skipped }
@@ -216,7 +225,7 @@ public sealed class GiveSpaceStep(GiveSpaceStepKind kind, string title)
 }
 
 /// <summary>Runs the give-space steps one at a time. Each call to <see cref="RunNextAsync"/> runs one step.</summary>
-public sealed class GiveSpaceWizard
+public sealed class GiveSpaceWizard : ISpaceMoveWizard
 {
     public delegate Task<CopyReport> CopyRunner(string source, string destination, bool resume, IProgress<CopyProgress>? progress, CancellationToken ct);
 

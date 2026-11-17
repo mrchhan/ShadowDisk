@@ -18,6 +18,13 @@ public static class PlanLimits
     /// </summary>
     public const long MbrTailReserve = 8 * ByteSize.MiB;
 
+    /// <summary>
+    /// Size a new volume needs to hold a copy of <paramref name="usedBytes"/> of files: the files plus room for NTFS's
+    /// own bookkeeping and a little spare — 10%, and at least 64 MiB.
+    /// </summary>
+    public static long NeededForCopy(long usedBytes) =>
+        Math.Max(MinimumNewVolume, AlignUp(usedBytes + Math.Max(usedBytes / 10, 64 * ByteSize.MiB)));
+
     /// <summary>The bytes at the end of the disk that no new or bigger partition may use.</summary>
     public static long TailReserve(PhysicalDisk disk) => disk.Style switch
     {

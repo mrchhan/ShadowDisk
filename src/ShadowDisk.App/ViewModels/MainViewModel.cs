@@ -2,6 +2,7 @@ using System.Collections.ObjectModel;
 using System.IO;
 using System.Windows;
 using Microsoft.Win32;
+using ShadowDisk.App.Controls;
 using ShadowDisk.App.Services;
 using ShadowDisk.Core;
 using ShadowDisk.Core.Copying;
@@ -58,6 +59,7 @@ public sealed class MainViewModel : ObservableObject
         DeleteVolumeCommand = new RelayCommand(() => _ = DeleteVolumeAsync(), () => !IsBusy && HasVolumeActions);
         ChangeLetterCommand = new RelayCommand(() => _ = ChangeLetterAsync(), () => !IsBusy && HasVolumeActions);
         GiveSpaceCommand = new RelayCommand(() => _ = GiveSpaceAsync(), () => !IsBusy && HasVolumeActions);
+        BoundaryDragCommand = new DelegateCommand<BoundaryDrag>(d => _ = OnBoundaryDraggedAsync(d), _ => !IsBusy && !IsSimulated);
         RemovePracticeDisksCommand = new RelayCommand(() => _ = RemovePracticeDisksAsync(), () => !IsBusy);
 
         foreach (var e in AppServices.Log.Entries) LogEntries.Add(e);
@@ -81,6 +83,7 @@ public sealed class MainViewModel : ObservableObject
     public RelayCommand RestartElevatedCommand { get; }
     public RelayCommand OpenLogFolderCommand { get; }
     public RelayCommand ToggleThemeCommand { get; }
+    public DelegateCommand<BoundaryDrag> BoundaryDragCommand { get; }
 
     public string Version => AppServices.Version;
     public string ThemeButtonText => Theme.IsDark ? "Theme: Shadow" : "Theme: Light";
@@ -111,9 +114,13 @@ public sealed class MainViewModel : ObservableObject
     /// Stage 5 parts 3 and 4: give space to the selected volume from what follows it — the next volume,
     /// and/or a Recovery partition (which is moved with Windows Recovery turned off and back on).
     /// </summary>
-    private async Task GiveSpaceAsync()
+    private Task GiveSpaceAsync() =>
+        SelectedRow?.Region.Partition is { Volume: not null } target ? GiveSpaceToAsync(target, null) : Task.CompletedTask;
+
+    /// <summary>Opens the give-space wizard for <paramref name="target"/>, optionally with an amount chosen by dragging.</summary>
+    private async Task GiveSpaceToAsync(Partition target, long? initialGive)
     {
-        if (SelectedDisk is not { } item || SelectedRow?.Region.Partition is not { Volume: not null } target) return;
+        if (SelectedDisk is not { } item) return;
         void Info(string text) => MessageBox.Show(text, "ShadowDisk — give space", MessageBoxButton.OK, MessageBoxImage.Information);
         if (!IsElevated) { Info("This needs administrator rights. Click “Restart as administrator” first."); return; }
 
@@ -162,12 +169,65 @@ public sealed class MainViewModel : ObservableObject
         reasons = reasons.Distinct().ToList();
         if (reasons.Count > 0) { Info(string.Join("\n\n", reasons)); return; }
 
-        var window = new GiveSpaceWindow(plan, give => new GiveSpaceWizard(plan, give, new WindowsStorageInventory(), NewRunner(),
+        var window = new GiveSpaceWindow(SpaceMoveSetups.ForGiveSpace(plan, give => new GiveSpaceWizard(plan, give, new WindowsStorageInventory(), NewRunner(),
             new WindowsPartitionLimitsProvider(), l => $@"{l}:\",
-            (s, d, resume, p, ct) => new VerifiedCopy(AppServices.Log).CopyAndVerifyAsync(s, d, p, ct, resume), AppServices.Log, recovery))
+            (s, d, resume, p, ct) => new VerifiedCopy(AppServices.Log).CopyAndVerifyAsync(s, d, p, ct, resume), AppServices.Log, recovery), initialGive))
         { Owner = Application.Current.MainWindow };
         window.ShowDialog();
         if (window.ChangedDisk) await RefreshAsync();
+    }
+
+    /// <summary>
+    /// Drag-to-rebalance towards the start of the disk: <paramref name="giver"/> gives space to the volume after it.
+    /// The files of that volume are moved out and back as verified copies (see TakeSpaceWizard).
+    /// </summary>
+    private async Task TakeSpaceAsync(Partition giver, long? initialGive)
+    {
+        if (SelectedDisk is not { } item) return;
+        void Info(string text) => MessageBox.Show(text, "ShadowDisk — give space", MessageBoxButton.OK, MessageBoxImage.Information);
+        if (!IsElevated) { Info("This needs administrator rights. Click “Restart as administrator” first."); return; }
+
+        var layout = item.Layout;
+        var receiver = layout.Regions.Where(r => r.Kind != RegionKind.Gap)
+            .SkipWhile(r => !ReferenceEquals(r.Partition, giver)).Skip(1).FirstOrDefault()?.Partition;
+        SizeLimits? giverLimits;
+        SizeLimits? receiverLimits = null;
+        IsBusy = true;
+        try
+        {
+            StatusText = "Asking Windows how far the volumes can shrink…";
+            var provider = new WindowsPartitionLimitsProvider();
+            giverLimits = await provider.GetLimitsAsync(layout, giver, PlanKind.ShrinkVolume, CancellationToken.None);
+            if (receiver?.Volume is not null)
+                receiverLimits = await provider.GetLimitsAsync(layout, receiver, PlanKind.ShrinkVolume, CancellationToken.None);
+        }
+        finally { IsBusy = false; StatusText = ""; }
+
+        var plan = TakeSpacePlanner.Plan(layout, giver, giverLimits, receiverLimits);
+        if (!plan.IsPossible) { Info(string.Join("\n\n", plan.Problems)); return; }
+        var power = PowerStatus.IsOnMainsPower();
+        var reasons = _policy.WhyNotAllowed(item.Disk, giver, power).Concat(_policy.WhyNotAllowed(item.Disk, plan.Receiver, power)).Distinct().ToList();
+        if (reasons.Count > 0) { Info(string.Join("\n\n", reasons)); return; }
+
+        var window = new GiveSpaceWindow(SpaceMoveSetups.ForTakeSpace(plan, give => new TakeSpaceWizard(plan, give, new WindowsStorageInventory(), NewRunner(),
+            new WindowsPartitionLimitsProvider(), l => $@"{l}:\",
+            (s, d, resume, p, ct) => new VerifiedCopy(AppServices.Log).CopyAndVerifyAsync(s, d, p, ct, resume), AppServices.Log), initialGive))
+        { Owner = Application.Current.MainWindow };
+        window.ShowDialog();
+        if (window.ChangedDisk) await RefreshAsync();
+    }
+
+    /// <summary>
+    /// The divider between two volumes was dragged on the bar (a preview gesture only). Dragging right gives space to the
+    /// left volume, dragging left gives space to the right volume; both open the wizard with that amount chosen.
+    /// </summary>
+    private async Task OnBoundaryDraggedAsync(BoundaryDrag drag)
+    {
+        if (drag.Left.Partition is not { Volume: not null } left || drag.Right.Partition is not { Volume: not null }) return;
+        var delta = drag.NewBoundary - drag.Left.EndBytes;
+        if (Math.Abs(delta) < 16 * ByteSize.MiB) return;
+        if (delta > 0) await GiveSpaceToAsync(left, PlanLimits.AlignDown(delta));
+        else await TakeSpaceAsync(left, PlanLimits.AlignDown(-delta));
     }
 
     /// <summary>Delete / change letter apply to a real (not demo) data partition with a volume.</summary>

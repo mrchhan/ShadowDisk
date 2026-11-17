@@ -291,6 +291,7 @@
 
               <c:DiskBarView Layout="{Binding Layout}"
                              SelectedRegion="{Binding DataContext.SelectedRegion, RelativeSource={RelativeSource AncestorType=Window}}"
+                             BoundaryDragCommand="{Binding DataContext.BoundaryDragCommand, RelativeSource={RelativeSource AncestorType=Window}}"
                              Visibility="{Binding DataContext.ShowBar, RelativeSource={RelativeSource AncestorType=Window}, Converter={StaticResource BoolToVis}}"
                              AutomationProperties.HelpText="Disk layout bar. Use the partition table below for exact values." />
 
@@ -299,7 +300,7 @@
                              Visibility="{Binding DataContext.ShowPie, RelativeSource={RelativeSource AncestorType=Window}, Converter={StaticResource BoolToVis}}"
                              AutomationProperties.HelpText="Disk layout donut chart. Use the partition table below for exact values." />
 
-              <TextBlock Text="Click a block or slice to select it. Very small partitions are drawn slightly larger than scale so they stay visible. The table below shows exact sizes."
+              <TextBlock Text="Click a block or slice to select it. In Bar view, drag the line between two drives to move space between them: a wizard opens with that amount and nothing changes until you confirm. Very small partitions are drawn slightly larger than scale; the table below shows exact sizes."
                          Foreground="{DynamicResource MutedText}" FontSize="12" TextWrapping="Wrap" Margin="0,6,0,0" />
             </StackPanel>
           </Border>

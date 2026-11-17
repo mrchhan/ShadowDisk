@@ -180,6 +180,29 @@ public sealed class GiveSpaceTests : IDisposable
         disk = disk with { Partitions = disk.Partitions.Select(p => p.PartitionNumber == 3 ? p with { Volume = Vol("G", 600 * MiB, 590 * MiB) } : p).ToList() };
         var plan = PlanFor(disk, "D");
         Assert.False(plan.IsPossible);
-        Assert.Contains(plan.Problems, p => p.Contains("too little to give"));
+        Assert.Contains(plan.Problems, p => p.Contains("A safe copy of its files needs"));
+    }
+
+    [Fact]
+    public void A_small_volume_with_few_files_can_give_space()
+    {
+        // Like the practice disk tested on a PC: D: 511 MiB, then G: 496 MiB holding 62 MiB, nothing after it.
+        var disk = Disk();
+        disk = disk with
+        {
+            SizeBytes = 1024 * MiB,
+            Partitions = disk.Partitions.Select(p => p.PartitionNumber switch
+            {
+                2 => p with { SizeBytes = 511 * MiB, Volume = Vol("D", 511 * MiB, 16 * MiB) },
+                3 => p with { OffsetBytes = 527 * MiB, SizeBytes = 496 * MiB, Volume = Vol("G", 496 * MiB, 62 * MiB) },
+                _ => p,
+            }).ToList(),
+        };
+        var layout = DiskLayoutBuilder.Build(disk);
+        var g = disk.Partitions.Single(p => p.PartitionNumber == 3);
+        var plan = GiveSpacePlanner.Plan(layout, disk.Partitions.Single(p => p.PartitionNumber == 2),
+            new SizeLimits(80 * MiB, g.SizeBytes, LimitsSource.Windows));   // Windows: G: can shrink to 80 MiB
+        Assert.True(plan.IsPossible, string.Join(" ", plan.Problems));
+        Assert.True(plan.MaxGive >= 300 * MiB, $"max {plan.MaxGive / MiB} MiB");
     }
 }

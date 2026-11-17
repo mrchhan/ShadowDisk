@@ -11,6 +11,9 @@
   and an explanation when a volume can't be extended (e.g. Recovery sits after C:).
 - **Copy & verify** (Stage 5 part 1): copy a drive's files to a new folder on another drive and check
   every file's SHA-256 checksum; never overwrites or deletes.
+- **Drag to rebalance:** drag the line between two neighbouring drives on the bar. The bar shows both new sizes;
+  on release the wizard opens with that amount. Dragging right uses the give-space wizard; dragging left uses the new
+  take-space wizard (the right drive's files are moved out and back, each time as a verified copy). No block-level moves.
 - **New look: the Shadow theme** (default) — night-blue panels with the AIShadow electric blue and ember orange,
   a hero header with the app and AIShadow logos, grouped toolbar, rounded cards, slim scroll bars and a gradient
   progress bar. **Light theme** still available (toolbar "Theme" button; remembered).
