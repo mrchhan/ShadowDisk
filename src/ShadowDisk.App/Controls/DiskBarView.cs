@@ -4,12 +4,16 @@ using System.Windows.Media;
 using ShadowDisk.Core;
 using ShadowDisk.Core.Layout;
 using ShadowDisk.Core.Model;
+using ShadowDisk.Core.Moving;
 using ShadowDisk.Core.Planning;
 
 namespace ShadowDisk.App.Controls;
 
 /// <summary>The divider between <paramref name="Left"/> and <paramref name="Right"/> was dragged to <paramref name="NewBoundary"/> (bytes). A preview gesture only.</summary>
 public sealed record BoundaryDrag(DiskRegion Left, DiskRegion Right, long NewBoundary);
+
+/// <summary>A whole drive block was dragged so it would start at <paramref name="NewOffset"/> (bytes). A preview gesture only.</summary>
+public sealed record BlockMove(DiskRegion Region, long NewOffset);
 
 /// <summary>
 /// Horizontal bar in on-disk order. Each partition is a block; inside a volume the dark part is
@@ -63,6 +67,28 @@ public sealed class DiskBarView : LayoutViewBase
         set => SetValue(BoundaryDragCommandProperty, value);
     }
 
+    public static readonly DependencyProperty BlockMoveCommandProperty = DependencyProperty.Register(
+        nameof(BlockMoveCommand), typeof(ICommand), typeof(DiskBarView), new PropertyMetadata(null));
+
+    /// <summary>
+    /// When set, a whole drive block can be dragged along the bar into the free space next to it (MiniTool-style).
+    /// The first drive and the Windows drive are locked and never move. On release it is executed with a <see cref="BlockMove"/>;
+    /// it never changes a disk itself (the move window does, after confirmation).
+    /// </summary>
+    public ICommand? BlockMoveCommand
+    {
+        get => (ICommand?)GetValue(BlockMoveCommandProperty);
+        set => SetValue(BlockMoveCommandProperty, value);
+    }
+
+    private DiskRegion? _moveRegion;     // block under the mouse when the button went down (a drag starts after a few pixels)
+    private MoveRange? _moveRange;
+    private Point _moveDown;
+    private bool _moving;
+    private long _moveGhost;             // where the block would start (bytes)
+    private long _spanStart;             // bytes at the left of the area the block can move in
+    private double _spanLeftPx, _spanPx; // linear scale over that area
+
     private const double BoundaryGrab = 7;
     private int _hoverBoundary = -1;
     private int _boundary = -1;      // index of the block left of the divider being dragged
@@ -112,6 +138,86 @@ public sealed class DiskBarView : LayoutViewBase
         dc.DrawRectangle(null, new Pen(SelectionBrush, 2.5), new Rect(_pairLeft + 1.25, 2.25, Math.Max(0, _pairRight - _pairLeft - 2.5), BarHeight - 2.5));
         var atLimit = _ghost <= _ghostMin || _ghost >= _ghostMax;
         dc.DrawLine(new Pen(atLimit ? DangerBrushOr(Brushes.OrangeRed) : SelectionBrush, atLimit ? 4 : 3), new Point(split, 1), new Point(split, BarHeight + 1));
+    }
+
+    /// <summary>The area the block can move in (free space), the block at its new place, and locks on drives that never move.</summary>
+    private void DrawBlockMove(DrawingContext dc)
+    {
+        if (_moveRegion?.Partition is not { } p || _moveRange is not { } range) return;
+        foreach (var (block, rect) in _blocks)
+        {
+            if (block.Region.Partition is not { } other || ReferenceEquals(other, p) || Layout is null) continue;
+            if (MovePlanner.WhyLocked(Layout.Disk, other) is null) continue;
+            dc.DrawRectangle(LockHatch, null, rect);
+            if (rect.Width > 20)
+            {
+                var lockIcon = new FormattedText("\uE72E", System.Globalization.CultureInfo.CurrentUICulture, FlowDirection.LeftToRight,
+                    new Typeface("Segoe MDL2 Assets"), 13, Brushes.White, VisualTreeHelper.GetDpi(this).PixelsPerDip);
+                dc.DrawText(lockIcon, new Point(rect.X + rect.Width / 2 - lockIcon.Width / 2, rect.Y + BarHeight / 2 - lockIcon.Height / 2));
+            }
+        }
+
+        var spanWidth = (range.MaxOffset + p.SizeBytes - _spanStart) * _spanPx;
+        var span = new Rect(_spanLeftPx, 1, Math.Max(1, spanWidth), BarHeight);
+        dc.DrawRectangle(UnallocatedBrush, new Pen(SelectionBrush, 1) { DashStyle = DashStyles.Dash }, span);
+
+        var ghost = new Rect(_spanLeftPx + (_moveGhost - _spanStart) * _spanPx, 1, Math.Max(2, p.SizeBytes * _spanPx), BarHeight);
+        dc.DrawRectangle(FreeBrush, null, ghost);
+        var used = p.Volume?.UsedBytes ?? 0;
+        dc.DrawRectangle(UsedBrush, null, new Rect(ghost.X, ghost.Y, Math.Min(ghost.Width, used * _spanPx), ghost.Height));
+        var atLimit = _moveGhost <= range.MinOffset || _moveGhost >= range.MaxOffset;
+        dc.DrawRectangle(null, new Pen(atLimit ? DangerBrushOr(Brushes.OrangeRed) : SelectionBrush, 3), Rect.Inflate(ghost, -1.5, -1.5));
+
+        var distance = _moveGhost - p.OffsetBytes;
+        var text = Text(distance == 0 ? $"{p.DisplayName}  ◂ drag ▸" : $"{p.DisplayName}  {(distance < 0 ? "◂ left" : "right ▸")} {ByteSize.Format(Math.Abs(distance))}",
+            12, Brushes.White, FontWeights.SemiBold);
+        var bubble = new Rect(Math.Clamp(ghost.X + ghost.Width / 2 - text.Width / 2 - 8, 0, Math.Max(0, ActualWidth - text.Width - 16)), 6, text.Width + 16, text.Height + 6);
+        dc.DrawRoundedRectangle(new SolidColorBrush(Color.FromArgb(0xE6, 0x10, 0x18, 0x2C)), new Pen(SelectionBrush, 1), bubble, 6, 6);
+        dc.DrawText(text, new Point(bubble.X + 8, bubble.Y + 3));
+    }
+
+    private void StartBlockCandidate(Point point)
+    {
+        _moveRegion = null;
+        _moveRange = null;
+        if (BlockMoveCommand is null || !IsSelectable || Layout is null || point.Y > BarHeight + 2) return;
+        var hit = _blocks.FirstOrDefault(t => point.X >= t.Rect.Left && point.X < t.Rect.Right);
+        if (hit.Block?.Region.Partition is not { Volume: not null } p) return;
+        var range = MovePlanner.Range(Layout, p);
+        if (!range.CanMove) return;
+        _moveRegion = hit.Block.Region;
+        _moveRange = range;
+        _moveDown = point;
+    }
+
+    private void BeginBlockMove()
+    {
+        if (_moveRegion?.Partition is not { } p || _moveRange is not { } range || !CaptureMouse()) return;
+        _spanStart = range.MinOffset;
+        var spanEnd = range.MaxOffset + p.SizeBytes;
+        _spanLeftPx = XFor(_spanStart);
+        _spanPx = (XFor(spanEnd) - _spanLeftPx) / Math.Max(1, spanEnd - _spanStart);
+        if (_spanPx <= 0) { ReleaseMouseCapture(); return; }
+        _moveGhost = p.OffsetBytes;
+        _moving = true;
+        Focus();
+        InvalidateVisual();
+    }
+
+    private void EndBlockMove(bool apply)
+    {
+        var region = _moveRegion;
+        var ghost = _moveGhost;
+        var wasMoving = _moving;
+        _moving = false;
+        _moveRegion = null;
+        _moveRange = null;
+        if (!wasMoving) return;
+        if (IsMouseCaptured) ReleaseMouseCapture();
+        InvalidateVisual();
+        if (!apply || region is null || Math.Abs(ghost - region.OffsetBytes) < ByteSize.MiB) return;
+        var move = new BlockMove(region, ghost);
+        if (BlockMoveCommand?.CanExecute(move) == true) BlockMoveCommand.Execute(move);
     }
 
     private Brush DangerBrushOr(Brush fallback) => TryFindResource("DangerBrush") as Brush ?? fallback;
@@ -245,6 +351,7 @@ public sealed class DiskBarView : LayoutViewBase
         }
 
         if (dragging) DrawLockedZones(dc, DragX);
+        if (_moving) DrawBlockMove(dc);
 
         // Glass sheen over the top of the bar.
         dc.DrawRoundedRectangle(Sheen, null, new Rect(1, 1, width, BarHeight * 0.5), BarRadius, BarRadius);
@@ -267,7 +374,7 @@ public sealed class DiskBarView : LayoutViewBase
         else
         {
             var selected = _blocks.FirstOrDefault(t => ReferenceEquals(t.Block.Region, SelectedRegion));
-            if (selected.Block is not null && _boundary < 0)   // while dragging, the moving pair is outlined instead
+            if (selected.Block is not null && _boundary < 0 && !_moving)   // while dragging, the moving pair is outlined instead
             {
                 // A soft glow that breathes around the selected block.
                 dc.PushOpacity(0.12 + 0.38 * Pulse);
@@ -372,6 +479,12 @@ public sealed class DiskBarView : LayoutViewBase
 
     protected override void OnKeyDown(KeyEventArgs e)
     {
+        if (e.Key == Key.Escape && _moving)
+        {
+            EndBlockMove(apply: false);
+            e.Handled = true;
+            return;
+        }
         if (e.Key == Key.Escape && _boundary >= 0)
         {
             EndBoundaryDrag(apply: false);
@@ -423,12 +536,24 @@ public sealed class DiskBarView : LayoutViewBase
             e.Handled = true;
             return;
         }
+        StartBlockCandidate(e.GetPosition(this));
         base.OnMouseLeftButtonDown(e);
     }
 
     protected override void OnMouseMove(MouseEventArgs e)
     {
         var p = e.GetPosition(this);
+        if (_moveRegion is not null && !_moving && e.LeftButton == MouseButtonState.Pressed && Math.Abs(p.X - _moveDown.X) > 4)
+            BeginBlockMove();
+        if (_moving && _moveRegion?.Partition is { } moving && _moveRange is { } range)
+        {
+            var offset = moving.OffsetBytes + (long)((p.X - _moveDown.X) / _spanPx);
+            _moveGhost = Math.Clamp(PlanLimits.AlignDown(Math.Max(0, offset)), range.MinOffset, range.MaxOffset);
+            if (Math.Abs(_moveGhost - moving.OffsetBytes) < ByteSize.MiB) _moveGhost = moving.OffsetBytes;   // snap back to "no move"
+            Cursor = Cursors.SizeAll;
+            InvalidateVisual();
+            return;
+        }
         if (_boundary >= 0)
         {
             var offset = _pairPx > 0 ? _pairOffset + (long)((p.X - _pairLeft) / _pairPx) : OffsetFor(p.X);
@@ -460,6 +585,13 @@ public sealed class DiskBarView : LayoutViewBase
 
     protected override void OnMouseLeftButtonUp(MouseButtonEventArgs e)
     {
+        if (_moving)
+        {
+            EndBlockMove(apply: true);
+            e.Handled = true;
+            return;
+        }
+        _moveRegion = null;
         if (_boundary >= 0)
         {
             EndBoundaryDrag(apply: true);
@@ -487,6 +619,12 @@ public sealed class DiskBarView : LayoutViewBase
 
     protected override void OnLostMouseCapture(MouseEventArgs e)
     {
+        if (_moving)
+        {
+            _moving = false;
+            _moveRegion = null;
+            InvalidateVisual();
+        }
         if (_boundary >= 0)
         {
             _boundary = -1;
@@ -506,6 +644,13 @@ public sealed class DiskBarView : LayoutViewBase
             return $"Drag to move space between {_blocks[b].Block.Label} and {_blocks[b + 1].Block.Label}.\n" +
                    "Nothing changes yet: a wizard opens with the amount you chose, and you confirm every step.";
         var hit = _blocks.FirstOrDefault(t => p.X >= t.Rect.Left && p.X < t.Rect.Right && p.Y <= BarHeight + LabelHeight);
-        return hit.Block is null ? null : RegionText(hit.Block.Region);
+        if (hit.Block is null) return null;
+        var text = RegionText(hit.Block.Region);
+        if (BlockMoveCommand is not null && Layout is not null && hit.Block.Region.Partition is { Volume: not null } part)
+        {
+            var range = MovePlanner.Range(Layout, part);
+            text += range.CanMove ? "\nDrag the block to move this drive into the free space next to it." : $"\n🔒 {range.Locked}";
+        }
+        return text;
     }
 }

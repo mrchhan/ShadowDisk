@@ -259,12 +259,56 @@ with that amount chosen, and you confirm and run every step yourself.
   At every moment a verified copy of the files exists. The right drive must be less than about half full
   (its files must fit at the end of its own space). Its files are copied twice, so this takes a while.
 
-**Why not move partitions block by block?** Many partition tools move the raw sectors. If power fails half-way,
-the half-moved partition is usually lost. ShadowDisk only uses steps that complete or fail as a whole, plus copies
-that are checked before anything is deleted.
+Since the drag opens the **method choice** (next section), these data-copy steps are now the **DATA COPY** option;
+**SECTOR TO SECTOR** does the same change by moving the right drive's blocks, without a second copy of its files.
 
 The Windows volume (C:) can only grow; its line can only be dragged towards the end of the disk, and that uses the
 give-space wizard (with the Recovery move where needed).
+
+## Move partition — SECTOR TO SECTOR or DATA COPY
+
+Like other partition tools, a whole drive block can now move along the disk. Three ways to start:
+
+* **On the bar:** drag a drive's block into the free space next to it. Locked drives show a hatch and a lock while you drag.
+* **On the bar:** drag the divider between two drives (see above).
+* **From the selected drive:** “Move this partition…” (a slider for the new start, and *Take in the free space in front
+  of it* — the drive moves left and then grows by the same amount).
+
+**Never moves:** the first drive and the Windows drive (C:), System/EFI/MSR/Recovery partitions, BitLocker-encrypted
+drives (turn BitLocker off first), non-NTFS drives (sector to sector is NTFS-only), drives without a letter, and drives
+on disks with an extended partition.
+
+The window shows the steps, then a **method choice with an estimated time for each**, based on a short read-only speed
+test of the disk (128 MB):
+
+* **SECTOR TO SECTOR (recommended)** — only the used blocks move (NTFS's own map of used space), directly on the disk.
+  No extra drive, no renaming, no room needed for a copy. Estimated from the used space and the measured speed.
+* **DATA COPY** — the verified-copy wizards (files out and back, every file checked). Slower and needs free space for a
+  copy; available when two drives share space (divider drag), not for changing where a single drive starts.
+
+**Power caution:** charge a laptop fully and keep the charger plugged in until the move finishes; the window shows the
+live power state. Moving is blocked on battery.
+
+**How a sector-to-sector move protects the data**
+1. Fresh read of the disk; same disk, same layout, same partition, the new place is free; policy checks.
+2. The drive is locked (refused if any file is open) and NTFS's map of used space is read; then it is dismounted.
+3. A **journal** is saved (`%LOCALAPPDATA%\ShadowDisk\moves`), then the partition is **hidden** from Windows (a
+   ShadowDisk partition type on GPT, type 0x7F on MBR) so nothing can mount or “repair” it half-moved. The original
+   type is in the journal before it is changed.
+4. Used ranges are copied in pieces no larger than the move distance (max 8 MiB), in the safe order (first to last when
+   moving left, last to first when moving right), so a piece never overwrites data that has not been copied yet.
+   Each piece is written, flushed to the disk, **read back and compared**, and the journal is saved after every piece.
+   Raw access is limited to the move's area; anything outside is refused.
+5. The NTFS boot sector and its backup get the new start; the partition table gets the new start and the original type
+   in one write; Windows mounts it again and ShadowDisk gives it back its letter.
+
+**Pause, power cut or crash:** a paused or interrupted move stays hidden from Windows. When ShadowDisk starts it shows
+a red banner, **Resume move…**, which continues from the last checked piece (a piece is simply copied again). Every
+earlier piece is still correct in its new place, and every later piece is still in its old place.
+
+**Divider drags with SECTOR TO SECTOR:** shrink one drive (Windows), move the right drive (above), extend the other
+drive (Windows). Each step re-reads the disk first; it stops at the first step that does not succeed and says which
+steps are done.
 
 ## Disk health and surface scan (Stage 4 — built, read-only)
 
@@ -291,4 +335,5 @@ Nothing is ever written or repaired. A clean scan does not guarantee the disk wo
 
 ## Not yet enabled
 * Shrinking, deleting or relettering the Windows volume (C:); any change to System Reserved, EFI or MSR.
+* Moving FAT32/exFAT drives, BitLocker drives, logical drives, or the first drive and C: (sector to sector).
 * Resuming the give-space wizard after ShadowDisk is closed (finish the remaining steps by hand, or start again).

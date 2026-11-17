@@ -179,6 +179,15 @@
       </WrapPanel>
     </Border>
 
+    <!-- ===== Unfinished move (pause, power cut, restart): offered first ===== -->
+    <Border DockPanel.Dock="Top" Background="{DynamicResource DangerBackBrush}" BorderBrush="{DynamicResource WarningBrush}" BorderThickness="0,0,0,2" Padding="16,8"
+            Visibility="{Binding HasPendingMove, Converter={StaticResource BoolToVis}}">
+      <DockPanel>
+        <Button DockPanel.Dock="Right" Content="Resume move…" Command="{Binding ResumeMoveCommand}" Style="{StaticResource AccentButton}" Margin="12,0,0,0" />
+        <TextBlock Text="{Binding PendingMoveText}" TextWrapping="Wrap" FontWeight="SemiBold" Foreground="{DynamicResource DangerTextBrush}" VerticalAlignment="Center" />
+      </DockPanel>
+    </Border>
+
     <!-- ===== Banner for warnings / demo mode / errors ===== -->
     <Border DockPanel.Dock="Top" Background="{DynamicResource BannerBackBrush}" BorderBrush="{DynamicResource BannerLineBrush}" BorderThickness="0,0,0,1" Padding="16,7"
             Visibility="{Binding HasBanner, Converter={StaticResource BoolToVis}}">
@@ -292,6 +301,7 @@
               <c:DiskBarView Layout="{Binding Layout}"
                              SelectedRegion="{Binding DataContext.SelectedRegion, RelativeSource={RelativeSource AncestorType=Window}}"
                              BoundaryDragCommand="{Binding DataContext.BoundaryDragCommand, RelativeSource={RelativeSource AncestorType=Window}}"
+                             BlockMoveCommand="{Binding DataContext.BlockMoveCommand, RelativeSource={RelativeSource AncestorType=Window}}"
                              Visibility="{Binding DataContext.ShowBar, RelativeSource={RelativeSource AncestorType=Window}, Converter={StaticResource BoolToVis}}"
                              AutomationProperties.HelpText="Disk layout bar. Use the partition table below for exact values." />
 
@@ -506,6 +516,8 @@
                 <Button Content="Give space from the next volume…" Command="{Binding DataContext.GiveSpaceCommand, RelativeSource={RelativeSource AncestorType=Window}}"
                         Style="{StaticResource AccentButton}"
                         ToolTip="Moves the next volume's files further along the disk (verified copy) and gives the freed space to this volume." />
+                <Button Content="Move this partition…" Command="{Binding DataContext.MovePartitionCommand, RelativeSource={RelativeSource AncestorType=Window}}"
+                        ToolTip="Move this drive as one block into the free space next to it (sector to sector), or take that space in. You can also drag the block on the bar. The first drive and the Windows drive never move." />
                 <Button Content="Delete this volume…" Command="{Binding DataContext.DeleteVolumeCommand, RelativeSource={RelativeSource AncestorType=Window}}"
                         Style="{StaticResource DangerTextButton}"
                         ToolTip="Only allowed for an empty volume, or one whose files were copied and verified with “Copy &amp; verify” in this session." />

@@ -10,6 +10,7 @@ using ShadowDisk.Core.Inventory;
 using ShadowDisk.Core.Layout;
 using ShadowDisk.Core.Logging;
 using ShadowDisk.Core.Model;
+using ShadowDisk.Core.Moving;
 using ShadowDisk.Core.Operations;
 using ShadowDisk.Core.Planning;
 using ShadowDisk.Core.Reporting;
@@ -60,6 +61,9 @@ public sealed class MainViewModel : ObservableObject
         ChangeLetterCommand = new RelayCommand(() => _ = ChangeLetterAsync(), () => !IsBusy && HasVolumeActions);
         GiveSpaceCommand = new RelayCommand(() => _ = GiveSpaceAsync(), () => !IsBusy && HasVolumeActions);
         BoundaryDragCommand = new DelegateCommand<BoundaryDrag>(d => _ = OnBoundaryDraggedAsync(d), _ => !IsBusy && !IsSimulated);
+        BlockMoveCommand = new DelegateCommand<BlockMove>(m => _ = OnBlockMovedAsync(m), _ => !IsBusy && !IsSimulated);
+        MovePartitionCommand = new RelayCommand(() => _ = MoveSelectedAsync(), () => !IsBusy && HasVolumeActions);
+        ResumeMoveCommand = new RelayCommand(() => _ = ResumeMoveAsync(), () => !IsBusy && HasPendingMove);
         RemovePracticeDisksCommand = new RelayCommand(() => _ = RemovePracticeDisksAsync(), () => !IsBusy);
 
         foreach (var e in AppServices.Log.Entries) LogEntries.Add(e);
@@ -84,6 +88,9 @@ public sealed class MainViewModel : ObservableObject
     public RelayCommand OpenLogFolderCommand { get; }
     public RelayCommand ToggleThemeCommand { get; }
     public DelegateCommand<BoundaryDrag> BoundaryDragCommand { get; }
+    public DelegateCommand<BlockMove> BlockMoveCommand { get; }
+    public RelayCommand MovePartitionCommand { get; }
+    public RelayCommand ResumeMoveCommand { get; }
 
     public string Version => AppServices.Version;
     public string ThemeButtonText => Theme.IsDark ? "Theme: Shadow" : "Theme: Light";
@@ -218,16 +225,126 @@ public sealed class MainViewModel : ObservableObject
     }
 
     /// <summary>
-    /// The divider between two volumes was dragged on the bar (a preview gesture only). Dragging right gives space to the
-    /// left volume, dragging left gives space to the right volume; both open the wizard with that amount chosen.
+    /// The divider between two volumes was dragged on the bar (a preview gesture only). Opens the move window with both
+    /// methods: SECTOR TO SECTOR (shrink, move the right drive's blocks, extend) or DATA COPY (the verified-copy wizards).
     /// </summary>
     private async Task OnBoundaryDraggedAsync(BoundaryDrag drag)
     {
-        if (drag.Left.Partition is not { Volume: not null } left || drag.Right.Partition is not { Volume: not null }) return;
+        if (SelectedDisk is not { } item) return;
+        if (drag.Left.Partition is not { Volume: not null } left || drag.Right.Partition is not { Volume: not null } right) return;
         var delta = drag.NewBoundary - drag.Left.EndBytes;
         if (Math.Abs(delta) < 16 * ByteSize.MiB) return;
-        if (delta > 0) await GiveSpaceToAsync(left, PlanLimits.AlignDown(delta));
-        else await TakeSpaceAsync(left, PlanLimits.AlignDown(-delta));
+        if (!IsElevated) { MoveInfo("This needs administrator rights. Click “Restart as administrator” first."); return; }
+        var power = PowerStatus.IsOnMainsPower();
+        var reasons = _policy.WhyNotAllowed(item.Disk, left, power, extend: delta > 0).Concat(_policy.WhyNotAllowed(item.Disk, right, power)).Distinct().ToList();
+        if (reasons.Count > 0) { MoveInfo(string.Join("\n\n", reasons)); return; }
+
+        var give = PlanLimits.AlignDown(Math.Abs(delta));
+        var plan = SectorPlanner.ForBoundary(item.Layout, left, right, drag.NewBoundary);
+        var (giver, receiver) = delta > 0 ? (right, left) : (left, right);
+        var setup = new MoveSetup(
+            $"ShadowDisk — {giver.DisplayName} gives space to {receiver.DisplayName}",
+            $"{giver.DisplayName} gives {ByteSize.Format(give)} to {receiver.DisplayName}. With SECTOR TO SECTOR, {right.DisplayName} moves as a whole block " +
+            "on the disk — no extra drive, no renaming, no room needed for a copy. With DATA COPY, the files are copied out and back with every file checked. " +
+            "The first drive and the Windows drive never move.",
+            right.DisplayName, null, right.OffsetBytes, null, plan, right.Volume!.UsedBytes,
+            DataCopies: delta > 0 ? 1 : 2, DataCopyUnavailable: null,
+            OpenDataCopy: delta > 0 ? () => { _ = GiveSpaceToAsync(left, give); } : () => { _ = TakeSpaceAsync(left, give); },
+            Run: RunSectorPlan(item.Disk), MeasureSpeed: MeasureSpeed(item.Disk, right));
+        await ShowMoveWindowAsync(setup);
+    }
+
+    /// <summary>A whole drive block was dragged on the bar: open the move window at that position.</summary>
+    private Task OnBlockMovedAsync(BlockMove move) =>
+        move.Region.Partition is { Volume: not null } p ? MovePartitionAsync(p, move.NewOffset) : Task.CompletedTask;
+
+    private Task MoveSelectedAsync() =>
+        SelectedRow?.Region.Partition is { Volume: not null } p ? MovePartitionAsync(p, null) : Task.CompletedTask;
+
+    private static void MoveInfo(string text) =>
+        MessageBox.Show(text, "ShadowDisk — move partition", MessageBoxButton.OK, MessageBoxImage.Information);
+
+    /// <summary>Move partition (sector to sector) into the free space next to it; optionally take that space in.</summary>
+    private async Task MovePartitionAsync(Partition p, long? newOffset)
+    {
+        if (SelectedDisk is not { } item) return;
+        if (!IsElevated) { MoveInfo("This needs administrator rights. Click “Restart as administrator” first."); return; }
+        if (HasPendingMove) { MoveInfo("An earlier move has not finished. Resume it first (see the banner at the top)."); return; }
+        var layout = item.Layout;
+        var range = MovePlanner.Range(layout, p);
+        if (!range.CanMove) { MoveInfo(range.Locked ?? $"{p.DisplayName} can't move."); return; }
+        var reasons = _policy.WhyNotAllowed(item.Disk, p, PowerStatus.IsOnMainsPower());
+        if (reasons.Count > 0) { MoveInfo(string.Join("\n\n", reasons)); return; }
+
+        var setup = new MoveSetup(
+            $"ShadowDisk — move {p.DisplayName}",
+            $"{p.DisplayName} moves as one block into the free space next to it, like in other partition tools: only its used blocks are copied, " +
+            "directly on the disk, and every piece is checked. No extra drive and no renaming. The first drive and the Windows drive are locked and never move.",
+            p.DisplayName, range, p.OffsetBytes, (offset, takeIn) => SectorPlanner.ForMove(layout, p, offset, takeIn), null, p.Volume!.UsedBytes,
+            DataCopies: 1,
+            DataCopyUnavailable: "a data copy can't change where a drive starts. To share space between two drives with a data copy, drag the divider between them " +
+                                 "or use “Give space from the next volume…”.",
+            OpenDataCopy: null, Run: RunSectorPlan(item.Disk), MeasureSpeed: MeasureSpeed(item.Disk, p), InitialOffset: newOffset);
+        await ShowMoveWindowAsync(setup);
+    }
+
+    private async Task ShowMoveWindowAsync(MoveSetup setup)
+    {
+        var window = new MoveWindow(setup) { Owner = Application.Current.MainWindow };
+        window.ShowDialog();
+        if (window.ChangedDisk) await RefreshAsync();
+    }
+
+    private static MoveJournalStore MoveStore => new(Path.Combine(AppServices.DataDirectory, "moves"));
+
+    private PartitionMover NewMover() =>
+        new(new WindowsStorageInventory(), new WindowsMoveHost(), _policy, AppServices.Log, MoveStore, PowerStatus.IsOnMainsPower);
+
+    private Func<SectorPlan, IProgress<SectorProgress>, CancellationToken, Task<OperationOutcome>> RunSectorPlan(PhysicalDisk disk) =>
+        (plan, progress, ct) => new SectorRebalanceRunner(new WindowsStorageInventory(), NewRunner(), NewMover(), AppServices.Log)
+            .RunAsync(disk.Number, disk.UniqueId, plan, progress, ct);
+
+    private static Func<CancellationToken, Task<double?>> MeasureSpeed(PhysicalDisk disk, Partition p) =>
+        ct => DiskSpeed.MeasureReadAsync(disk.Number, disk.SizeBytes, disk.LogicalSectorSize, p.OffsetBytes, Math.Min(p.SizeBytes, 128 * ByteSize.MiB), ct);
+
+    // ----- Interrupted moves (pause, power cut, crash): offered at start-up -----
+
+    private MoveJournal? _pendingMove;
+
+    public bool HasPendingMove => _pendingMove is not null;
+
+    public string PendingMoveText => _pendingMove is { } j
+        ? $"A move did not finish: {j.Describe()}. The drive is hidden from Windows until it is finished. Its data is safe — resume it to finish."
+        : "";
+
+    private void CheckPendingMoves()
+    {
+        try { _pendingMove = MoveStore.LoadAll().FirstOrDefault(); }
+        catch (Exception ex) { AppServices.Log.Warning("Could not read move journals: " + ex.Message); }
+        OnPropertyChanged(nameof(HasPendingMove));
+        OnPropertyChanged(nameof(PendingMoveText));
+    }
+
+    private async Task ResumeMoveAsync()
+    {
+        if (_pendingMove is not { } j) return;
+        if (!IsElevated) { MoveInfo("Resuming a move needs administrator rights. Click “Restart as administrator” first."); return; }
+        var name = j.DriveLetter is { Length: 1 } l ? l + ":" : "the drive";
+        var step = new SectorStep(SectorStepKind.Move, name, j.OldOffset, j.SizeBytes, j.NewOffset, j.SizeBytes);
+        var plan = new SectorPlan([step], [], $"{name} is at its new place.", j.UsedBytes);
+        var disk = _snapshot?.Disks.FirstOrDefault(d => d.UniqueId == j.DiskUniqueId);
+        var setup = new MoveSetup(
+            "ShadowDisk — resume move",
+            $"ShadowDisk was moving {name} when it stopped (paused, power cut or restart). Every piece already moved was checked and recorded in the journal, " +
+            $"so it continues from piece {j.NextChunk + 1}. Until then {name} stays hidden from Windows so nothing can change it half-moved." +
+            (j.Phase == MovePhase.Finishing ? " The data has already moved; only the partition table is left to update." : ""),
+            name, null, j.OldOffset, null, plan, j.UsedBytes, 1, "an unfinished move can only be resumed.", null,
+            (_, progress, ct) => NewMover().ResumeAsync(j, new InlineProgress<MoveProgress>(m => progress.Report(new SectorProgress(0, 1, step, m))), ct),
+            ct => disk is null ? Task.FromResult<double?>(null)
+                : DiskSpeed.MeasureReadAsync(disk.Number, disk.SizeBytes, disk.LogicalSectorSize, Math.Min(j.OldOffset, j.NewOffset), 128 * ByteSize.MiB, ct),
+            IsResume: true);
+        await ShowMoveWindowAsync(setup);
+        CheckPendingMoves();
     }
 
     /// <summary>Delete / change letter apply to a real (not demo) data partition with a volume.</summary>
@@ -528,6 +645,7 @@ public sealed class MainViewModel : ObservableObject
             if (snapshot.IsSimulated)
                 warnings.Insert(0, "DEMO MODE: these are simulated disks, not the disks in this PC.");
             BannerText = warnings.Count == 0 ? null : string.Join("  ", warnings);
+            CheckPendingMoves();
             StatusText = $"{snapshot.Disks.Count} disk(s) read at {snapshot.TakenAt:HH:mm:ss} from {snapshot.SourceDescription}.";
             AppServices.Log.Info($"Inventory refreshed from {snapshot.SourceDescription}: {snapshot.Disks.Count} disk(s).");
             foreach (var w in snapshot.Warnings) AppServices.Log.Warning(w);

@@ -33,4 +33,12 @@ public static class PowerStatus
             _ => null,
         };
     }
+
+    /// <summary>Battery charge in percent, or null when there is no battery or Windows can't tell.</summary>
+    public static int? BatteryPercent()
+    {
+        if (!GetSystemPowerStatus(out var status)) return null;
+        if ((status.BatteryFlag & 128) != 0 || status.BatteryFlag == 255 || status.BatteryLifePercent > 100) return null;
+        return status.BatteryLifePercent;
+    }
 }

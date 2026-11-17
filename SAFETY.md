@@ -36,7 +36,9 @@ Real disks stay read-only unless you switch on **Real disk changes** for the cur
 then only data volumes can be changed. The Windows volume (C:) may only be **extended** (never shrunk,
 deleted or given another letter), and System Reserved, EFI and MSR stay protected. A Recovery partition
 is only moved by the give-space wizard, and only after Windows Recovery is turned off and its image is
-confirmed safe on C:. Each operation
+confirmed safe on C:. A sector-to-sector **move** never touches the first drive or C:, hides the
+partition from Windows while it moves, checks every piece by reading it back, and keeps a journal after
+every piece so it can be resumed after a pause or power cut. Each operation
 is documented in [docs/OPERATIONS.md](docs/OPERATIONS.md) before it is enabled.
 
 ## Versions 0.1 and 0.2

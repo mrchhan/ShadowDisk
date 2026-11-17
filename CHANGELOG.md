@@ -1,6 +1,15 @@
 # Changelog
 
 ## Unreleased (Stage 3 preview)
+- **Move partition (MiniTool-style):** drag a whole drive block along the bar into the free space next to it,
+  or use “Move this partition…”. A drive can also **take in the free space in front of it**. The first drive and C:
+  are locked (shown with a lock while dragging) and never move.
+- **Choose the method, with estimated times:** **SECTOR TO SECTOR** (only used NTFS blocks move, directly on the disk;
+  no extra drive, no renaming) or **DATA COPY** (the verified-copy wizards). Estimates come from a short read-only speed test.
+  Dragging the divider between two drives now offers both.
+- **Power caution** in the move window (charge the laptop and keep the charger plugged in) with the live power state.
+- **Power-cut protection for moves:** a journal after every checked piece, the partition hidden from Windows while it
+  moves, and a **Resume move** banner at start-up.
 - **Practice disks:** create and remove small virtual disk files for safely trying real changes.
 - **Create a new volume for real**, on practice disks only: re-checks the disk just before writing,
   final confirmation (backup tick + type CREATE), one attempt with no retry, read-back afterwards.
