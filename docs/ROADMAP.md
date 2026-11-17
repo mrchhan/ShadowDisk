@@ -13,7 +13,7 @@ Each stage ships only when the previous one is stable and tested.
 - Validation against alignment, MBR limits, protected partitions, BitLocker and health
 - All planning runs against a mock backend; nothing is applied
 
-## Stage 3: Carefully scoped real operations (v0.3+, in progress)
+## Stage 3: Carefully scoped real operations (v0.3, released; more in later versions)
 Progress: practice disks and "create a new volume" on practice disks are built (see docs/OPERATIONS.md).
 
 Only operations Windows supports natively, added **one at a time**, each with documented behaviour,

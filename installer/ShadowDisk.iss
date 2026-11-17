@@ -2,7 +2,7 @@
 ; Build with:  iscc /DAppVersion=0.1.0 installer\ShadowDisk.iss   (after running dotnet publish, see build\build-installer.ps1)
 
 #ifndef AppVersion
-  #define AppVersion "0.2.0"
+  #define AppVersion "0.3.0"
 #endif
 #define AppName "ShadowDisk"
 #define AppExe "ShadowDisk.exe"

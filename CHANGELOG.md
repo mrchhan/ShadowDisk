@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased (Stage 3 preview)
+## 0.3.0 (17 November 2026)
 - **Move partition (MiniTool-style):** drag a whole drive block along the bar into the free space next to it,
   or use “Move this partition…”. A drive can also **take in the free space in front of it**. The first drive and C:
   are locked (shown with a lock while dragging) and never move.

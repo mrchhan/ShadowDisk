@@ -3,7 +3,7 @@
   Requirements: .NET 10 SDK, Inno Setup 6 (winget install JRSoftware.InnoSetup)
   Usage:  powershell -ExecutionPolicy Bypass -File build\build-installer.ps1 [-Version 0.1.0]
 #>
-param([string]$Version = "0.2.0")
+param([string]$Version = "0.3.0")
 $ErrorActionPreference = "Stop"
 $root = Split-Path -Parent $PSScriptRoot
 Set-Location $root

@@ -2,34 +2,62 @@
 
 # ShadowDisk
 
-**A free, open-source disk and partition inspector for Windows, built with data safety first.**
+**A free, open-source disk and partition manager for Windows, built with data safety first.**
 
-ShadowDisk shows what is really on your drives: physical disks, partitions, volumes, used data,
-free space and unallocated space. You can view the layout as a bar, a pie/donut chart or a table.
+ShadowDisk shows what is really on your drives and lets you change partitions the careful way:
+every change is previewed first, confirmed by typing, checked afterwards, and can be practised on a
+throwaway virtual disk before you touch a real one.
 
-> **Version 0.2 is read-only.** It never resizes, creates, deletes, formats or writes to any disk.
-> Changes will be added later, one carefully tested operation at a time. See [SAFETY.md](SAFETY.md).
+> **Real changes are switched off by default.** ShadowDisk changes only its own **practice disks**
+> until you turn on **Real disk changes** for the current session. Keep a backup of anything
+> important. See [SAFETY.md](SAFETY.md) and [If something goes wrong](docs/IF-SOMETHING-GOES-WRONG.md).
 
-## Features (v0.2)
+## Why ShadowDisk?
 
-- Every physical disk with its real identity: model, size in exact bytes, GPT/MBR, connection type
-  (NVMe, SATA, USB…) and sector sizes
-- Partitions in disk order, including EFI, Microsoft Reserved and Recovery partitions, which are
-  clearly marked as protected
-- **Used data**, **free space inside each volume** and **unallocated disk space** shown separately
-- Bar, pie/donut or table view (your choice is remembered). The table is always shown as a text
-  alternative to the charts
-- BitLocker status (needs "Restart as administrator"), dynamic disks, removable drives and
-  uninitialized disks are detected and explained
-- "Why can't I resize this?" explanations, so you can see which future actions Windows would
-  allow and why others would be blocked
-- **Plan a change (preview only):** shrink a volume, extend it, or create a new volume in
-  unallocated space, and compare the current and proposed layouts. Size limits come from
-  Windows where possible. Every check and risk is listed, and nothing is applied
-- The **health status Windows reports** for each disk, clearly labelled as *not* a bad-sector scan
-- **Demo mode** with simulated disks, to explore safely or to make screenshots
-- Plain-text report export with masked serial numbers
-- Timestamped activity log in `%LOCALAPPDATA%\ShadowDisk\logs`
+Most partition tools ask you to trust them. ShadowDisk shows you everything and checks every step.
+
+- **Free, with nothing held back:** no trial limits, upgrade prompts or bundled extras.
+- **Open source:** the code, the [safety rules](SAFETY.md) and the exact steps of every
+  [operation](docs/OPERATIONS.md) are public.
+- **Practise first:** create small virtual disks and try any change on them before a real disk.
+- **Checked, not assumed:** limits are re-read just before every change, moved data is read back and
+  compared piece by piece, and the disk is read again afterwards.
+- **Survives a power cut:** a partition move keeps a journal after every piece and can be resumed.
+- **Hard limits:** Windows (C:) and the first drive never move; C: can only be extended.
+- **Plain language:** when something can't be done, ShadowDisk says why.
+
+It is new and deliberately cautious: it does not clone disks, migrate Windows to a new SSD, shrink
+or move C:, or run from a boot USB. Sector-to-sector moves are for NTFS drives.
+
+## Features (v0.3)
+
+**See your disks**
+- Every physical disk with model, exact size, GPT/MBR, connection type and sector sizes
+- Partitions in disk order (EFI, Microsoft Reserved and Recovery clearly marked as protected)
+- Used data, free space inside volumes and unallocated space, as a **bar**, **pie** or table
+- **Disk health** (Windows' status, temperature and wear where reported) and a read-only
+  **surface scan** for bad sectors
+
+**Change partitions** (practice disks always; real disks only with the session switch)
+- Shrink, extend and create volumes; delete a volume; change a drive letter
+- **Move partition:** drag a whole drive block along the bar, or let a drive take in the free space
+  in front of it
+- **Drag the divider** between two drives to move space between them, with a choice of method and an
+  estimated time for each:
+  - **SECTOR TO SECTOR:** only the used NTFS blocks move, directly on the disk (fast, no extra drive)
+  - **DATA COPY:** files are copied out and back and every file's checksum is verified
+- **Give space to C:**, including moving the Windows Recovery partition out of the way safely
+- **Copy & verify:** copy a drive's files to another drive and check every file
+
+**Built-in protection**
+- Preview of the current and proposed layout before anything is applied
+- Typed confirmations (`EXTEND D`, `MOVE G`, `DELETE X`…), one attempt, no silent retries
+- Pre-checks before multi-step changes, so nothing is half-done for nothing
+- Charger warning, and no moves on battery
+- **Resume move** after a pause, crash or power cut
+- Timestamped activity log in `%LOCALAPPDATA%\ShadowDisk\logs` and a text report export
+
+**Looks**: the Shadow theme (or Light), with a spinning disk that turns while work runs.
 
 ## Install
 
@@ -43,7 +71,8 @@ No separate .NET install is needed.
 > code-signed. Choose **More info → Run anyway** if you downloaded it from this repository.
 
 **Supported:** Windows 10 (1809 or later) and Windows 11, 64-bit.
-**Tested on:** *not yet tested on real hardware. Please report results in Issues.*
+**Tested on:** a Windows laptop (HDD, MBR) and ShadowDisk practice disks (GPT and MBR).
+Please report your results in [Issues](https://github.com/mrchhan/ShadowDisk/issues).
 
 ## Build from source
 
@@ -54,18 +83,18 @@ open `ShadowDisk.slnx`), and [Inno Setup 6](https://jrsoftware.org/isinfo.php) f
 dotnet test  tests\ShadowDisk.Core.Tests        # unit tests (simulated disks only)
 dotnet run   --project src\ShadowDisk.App        # run the app
 dotnet run   --project src\ShadowDisk.App -- --demo
-powershell -ExecutionPolicy Bypass -File build\build-installer.ps1 -Version 0.1.0
+powershell -ExecutionPolicy Bypass -File build\build-installer.ps1 -Version 0.3.0
 ```
 
 Every push to GitHub builds and tests the app and produces the installer automatically. Pushing a
-tag such as `v0.1.0` publishes a GitHub Release with the installer attached.
+tag such as `v0.3.0` publishes a GitHub Release with the installer attached.
 
 ## Project layout
 
 | Folder | What it is |
 |---|---|
-| `src/ShadowDisk.Core` | Disk model, layout maths, safety rules, report, log. No Windows calls, fully unit-tested |
-| `src/ShadowDisk.Windows` | Read-only access to the Windows Storage Management API (`MSFT_Disk`, `MSFT_Partition`, `MSFT_Volume`) |
+| `src/ShadowDisk.Core` | Disk model, layout maths, safety rules, wizards, move engine and journal. No Windows calls, fully unit-tested |
+| `src/ShadowDisk.Windows` | Windows Storage Management API (`MSFT_Disk`, `MSFT_Partition`, `MSFT_Volume`), diskpart, raw disk access for moves |
 | `src/ShadowDisk.App` | WPF user interface |
 | `tests/ShadowDisk.Core.Tests` | Unit tests using simulated disks only |
 | `installer/` | Inno Setup installer script |

@@ -29,7 +29,7 @@ will never claim otherwise.
    failing drive.
 10. **Development never touches real disks.** Tests use simulated disks or disposable virtual disks.
 
-## Stage 3 (in progress)
+## Version 0.3
 
 Real changes are enabled on ShadowDisk practice disks (virtual disk files ShadowDisk creates).
 Real disks stay read-only unless you switch on **Real disk changes** for the current session; even
@@ -45,6 +45,11 @@ is documented in [docs/OPERATIONS.md](docs/OPERATIONS.md) before it is enabled.
 
 Version 0.2 adds change *planning*, which only produces previews. It still contains **no code that writes to disks**. The storage interface it uses
 (`IStorageInventory`) has no write methods.
+
+## If something goes wrong
+
+See [docs/IF-SOMETHING-GOES-WRONG.md](docs/IF-SOMETHING-GOES-WRONG.md): resuming an interrupted move,
+what a half-finished change leaves behind, drive letters, Windows Recovery and failing disks.
 
 ## Reporting a problem
 

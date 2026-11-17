@@ -240,13 +240,42 @@ public sealed class MainViewModel : ObservableObject
         if (reasons.Count > 0) { MoveInfo(string.Join("\n\n", reasons)); return; }
 
         var give = PlanLimits.AlignDown(Math.Abs(delta));
-        var plan = SectorPlanner.ForBoundary(item.Layout, left, right, drag.NewBoundary);
         var (giver, receiver) = delta > 0 ? (right, left) : (left, right);
+
+        // The bar only estimates how small a drive can get; ask Windows for the real limit and keep the drag within it.
+        var limitNote = "";
+        try
+        {
+            IsBusy = true;
+            StatusText = $"Asking Windows how far {giver.DisplayName} can shrink…";
+            var limits = await new WindowsPartitionLimitsProvider().GetLimitsAsync(item.Layout, giver, PlanKind.ShrinkVolume, CancellationToken.None);
+            if (limits.IsUsable)
+            {
+                var maxGive = PlanLimits.AlignDown(Math.Max(0, giver.SizeBytes - PlanLimits.AlignUp(limits.MinBytes)));
+                if (maxGive < SectorPlanner.MinimumChange)
+                {
+                    MoveInfo($"{giver.DisplayName} can't give any space: Windows won't shrink it below {ByteSize.Format(PlanLimits.AlignUp(limits.MinBytes))} " +
+                             "(its files and NTFS's own data need the room).");
+                    return;
+                }
+                if (give > maxGive)
+                {
+                    limitNote = $" (You dragged {ByteSize.Format(give)}, but Windows won't shrink {giver.DisplayName} below " +
+                                $"{ByteSize.Format(PlanLimits.AlignUp(limits.MinBytes))}, so the most it can give is used.)";
+                    give = maxGive;
+                }
+            }
+        }
+        catch (Exception ex) { AppServices.Log.Warning("Could not read Windows' shrink limit: " + ex.Message); }
+        finally { IsBusy = false; StatusText = ""; }
+
+        var newBoundary = delta > 0 ? left.EndBytes + give : left.EndBytes - give;
+        var plan = SectorPlanner.ForBoundary(item.Layout, left, right, newBoundary);
         var setup = new MoveSetup(
             $"ShadowDisk — {giver.DisplayName} gives space to {receiver.DisplayName}",
             $"{giver.DisplayName} gives {ByteSize.Format(give)} to {receiver.DisplayName}. With SECTOR TO SECTOR, {right.DisplayName} moves as a whole block " +
             "on the disk — no extra drive, no renaming, no room needed for a copy. With DATA COPY, the files are copied out and back with every file checked. " +
-            "The first drive and the Windows drive never move.",
+            "The first drive and the Windows drive never move." + limitNote,
             right.DisplayName, null, right.OffsetBytes, null, plan, right.Volume!.UsedBytes,
             DataCopies: delta > 0 ? 1 : 2, DataCopyUnavailable: null,
             OpenDataCopy: delta > 0 ? () => { _ = GiveSpaceToAsync(left, give); } : () => { _ = TakeSpaceAsync(left, give); },
