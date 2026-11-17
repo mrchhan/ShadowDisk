@@ -1,6 +1,6 @@
 <ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
                     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
-  <!-- Shadow theme (default): night blue with the AIShadow electric blue and ember orange. -->
+  <!-- Shadow theme (default): night blue with the Shadow Creative Studio electric blue and ember orange. -->
   <SolidColorBrush x:Key="WindowBrush" Color="#0A0F1E" />
   <SolidColorBrush x:Key="PanelBrush" Color="#111A2E" />
   <SolidColorBrush x:Key="PanelAltBrush" Color="#172340" />
@@ -65,7 +65,7 @@
     <GradientStop Color="#55FF8A2A" Offset="0" />
     <GradientStop Color="#00FF8A2A" Offset="1" />
   </RadialGradientBrush>
-  <!-- The AIShadow colours: electric blue to ember orange. -->
+  <!-- The Shadow Creative Studio colours: electric blue to ember orange. -->
   <LinearGradientBrush x:Key="AccentGradient" StartPoint="0,0" EndPoint="1,0">
     <GradientStop Color="#2F8CFF" Offset="0" />
     <GradientStop Color="#7A6BFF" Offset="0.5" />

@@ -69,7 +69,7 @@ public sealed class DiskPieView : LayoutViewBase
             start += sweeps[i];
         }
 
-        // The AIShadow ring: electric blue to ember orange around the donut.
+        // The Shadow Creative Studio ring: electric blue to ember orange around the donut.
         if (reveal > 0.6)
         {
             dc.PushOpacity(Math.Min(1, (reveal - 0.6) / 0.4) * 0.85);

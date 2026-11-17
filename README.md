@@ -106,4 +106,4 @@ More detail: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) · Plans: [docs/ROADMA
 MIT. Free to use, share and modify. See [LICENSE](LICENSE).
 ShadowDisk is provided "as is", without warranty. Keep backups of anything important.
 
-<img src="docs/aishadow-logo.png" width="40" alt="AIShadow logo" align="middle"> Made by Hassan Malik · **AIShadow**
+<img src="docs/aishadow-logo.png" width="40" alt="Shadow Creative Studio logo" align="middle"> Made by Hassan Malik · **Shadow Creative Studio**

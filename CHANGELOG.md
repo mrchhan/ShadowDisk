@@ -23,15 +23,15 @@
 - **Drag to rebalance:** drag the line between two neighbouring drives on the bar. The bar shows both new sizes;
   on release the wizard opens with that amount. Dragging right uses the give-space wizard; dragging left uses the new
   take-space wizard (the right drive's files are moved out and back, each time as a verified copy). No block-level moves.
-- **New look: the Shadow theme** (default) — night-blue panels with the AIShadow electric blue and ember orange,
-  a hero header with the app and AIShadow logos, grouped toolbar, rounded cards, slim scroll bars and a gradient
+- **New look: the Shadow theme** (default) — night-blue panels with the Shadow Creative Studio electric blue and ember orange,
+  a hero header with the app and Shadow Creative Studio logos, grouped toolbar, rounded cards, slim scroll bars and a gradient
   progress bar. **Light theme** still available (toolbar "Theme" button; remembered).
 - **A real spinning hard disk:** a drawn platter (tracks, blue and orange reflections, hub, read/write arm and
   activity light) in the header, next to each disk, in the status bar and in the dialogs. It turns slowly when idle;
   while ShadowDisk is working (refresh, changes, copy & verify, health scans, give-space steps) it spins up, the arm
   seeks across the tracks and the light blinks orange.
 - **Shadow colours on the charts:** glossy electric-blue→violet used space, night-blue free space, slate system
-  partitions, a rounded bar with a glass sheen, and an AIShadow blue→orange ring around the pie.
+  partitions, a rounded bar with a glass sheen, and an Shadow Creative Studio blue→orange ring around the pie.
 - **Animations:** a start-up intro (header slides in, toolbar and disk list rise, disks slide in one by one);
   slow aurora glows, spinning rings around the ShadowDisk icon, a shine across the title and a shimmering accent
   line in the header; cards cascade in when a disk is chosen; the bar sweeps in and each volume's used space fills

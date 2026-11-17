@@ -6,7 +6,7 @@
 #endif
 #define AppName "ShadowDisk"
 #define AppExe "ShadowDisk.exe"
-#define AppPublisher "AIShadow"
+#define AppPublisher "Shadow Creative Studio"
 #define AppUrl "https://github.com/mrchhan/ShadowDisk"
 
 [Setup]
@@ -33,7 +33,7 @@ InfoBeforeFile=before-you-install.txt
 OutputDir=..\artifacts\installer
 OutputBaseFilename=ShadowDisk-Setup-{#AppVersion}
 SetupIconFile=..\src\ShadowDisk.App\Assets\shadowdisk.ico
-; AIShadow logo in the top-right corner of every installer page (two sizes for normal and high-DPI screens)
+; Shadow Creative Studio logo in the top-right corner of every installer page (two sizes for normal and high-DPI screens)
 WizardSmallImageFile=wizard-small-55.bmp,wizard-small-110.bmp
 UninstallDisplayIcon={app}\{#AppExe}
 UninstallDisplayName={#AppName}

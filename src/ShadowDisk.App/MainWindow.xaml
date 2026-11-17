@@ -100,11 +100,11 @@
             </TextBlock>
           </StackPanel>
           <Border Width="1" Height="36" Background="#33FFFFFF" Margin="18,0,16,0" />
-          <Ellipse Width="34" Height="34" AutomationProperties.Name="AIShadow logo">
+          <Ellipse Width="34" Height="34" AutomationProperties.Name="Shadow Creative Studio logo">
             <Ellipse.Fill><ImageBrush ImageSource="Assets/aishadow-logo.png" RenderOptions.BitmapScalingMode="HighQuality" /></Ellipse.Fill>
             <Ellipse.Effect><DropShadowEffect x:Name="LogoGlow" Color="#FF8A2A" ShadowDepth="0" BlurRadius="12" Opacity="0.65" /></Ellipse.Effect>
           </Ellipse>
-          <TextBlock Text="by AIShadow" Foreground="{DynamicResource HeroMutedBrush}" FontWeight="SemiBold" Margin="10,0,0,0" VerticalAlignment="Center" />
+          <TextBlock Text="by Shadow Creative Studio" Foreground="{DynamicResource HeroMutedBrush}" FontWeight="SemiBold" Margin="10,0,0,0" VerticalAlignment="Center" />
         </StackPanel>
 
         <StackPanel x:Name="HeroRight" Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center">
@@ -125,7 +125,7 @@
         </StackPanel>
       </DockPanel>
 
-      <!-- Accent line in the AIShadow colours, with a light shimmer running along it. -->
+      <!-- Accent line in the Shadow Creative Studio colours, with a light shimmer running along it. -->
       <Rectangle Height="2" VerticalAlignment="Bottom" Fill="{DynamicResource AccentGradient}" IsHitTestVisible="False" />
       <Rectangle Width="200" Height="2" VerticalAlignment="Bottom" HorizontalAlignment="Left" IsHitTestVisible="False">
         <Rectangle.Fill>

@@ -8,7 +8,7 @@ using System.Windows.Media.Animation;
 namespace ShadowDisk.App;
 
 /// <summary>
-/// The app's look: the "Shadow" theme (default, night blue with the AIShadow electric blue and ember orange)
+/// The app's look: the "Shadow" theme (default, night blue with the Shadow Creative Studio electric blue and ember orange)
 /// or "Light". The choice is remembered in %LOCALAPPDATA%\ShadowDisk\settings.json.
 /// Motion follows Windows' own "Show animations in Windows" setting.
 /// </summary>

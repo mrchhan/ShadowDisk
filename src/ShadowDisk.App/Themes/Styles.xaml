@@ -120,7 +120,7 @@
     </Setter>
   </Style>
 
-  <!-- Main call to action: the AIShadow gradient. -->
+  <!-- Main call to action: the Shadow Creative Studio gradient. -->
   <Style x:Key="AccentButton" TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
     <Setter Property="Background" Value="{DynamicResource AccentGradient}" />
     <Setter Property="BorderBrush" Value="Transparent" />
@@ -435,7 +435,7 @@
     </Style.Triggers>
   </Style>
 
-  <!-- ===== Progress: the AIShadow gradient ===== -->
+  <!-- ===== Progress: the Shadow Creative Studio gradient ===== -->
   <Style TargetType="ProgressBar">
     <Setter Property="Height" Value="10" />
     <Setter Property="Template">
